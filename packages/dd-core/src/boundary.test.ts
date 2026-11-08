@@ -26,12 +26,29 @@ describe("dd-core extract boundary", () => {
   });
 
   it("rejects an import of dd-extract", async () => {
-    const eslint = new ESLint({ cwd: repoRoot, ignore: false });
-    const results = await eslint.lintFiles([
+    const boundary = await boundaryMessages(
       "packages/dd-core/eslint-fixtures/imports-extract.ts",
-    ]);
-    const boundary = results.flatMap((result) =>
-      result.messages.filter((message) => message.ruleId === "no-restricted-imports"),
+      "no-restricted-imports",
+    );
+
+    expect(boundary.length).toBeGreaterThan(0);
+    expect(boundary.every((message) => message.severity === 2)).toBe(true);
+  });
+
+  it("rejects a relative import into packages/extract", async () => {
+    const boundary = await boundaryMessages(
+      "packages/dd-core/eslint-fixtures/imports-extract-relative.ts",
+      "no-restricted-imports",
+    );
+
+    expect(boundary.length).toBeGreaterThan(0);
+    expect(boundary.every((message) => message.severity === 2)).toBe(true);
+  });
+
+  it("rejects a dynamic import in dd-core", async () => {
+    const boundary = await boundaryMessages(
+      "packages/dd-core/eslint-fixtures/dynamic-import.ts",
+      "no-restricted-syntax",
     );
 
     expect(boundary.length).toBeGreaterThan(0);
@@ -42,19 +59,35 @@ describe("dd-core extract boundary", () => {
     const eslint = new ESLint({ cwd: repoRoot });
     const results = await eslint.lintFiles(["packages/dd-core/src"]);
     const boundary = results.flatMap((result) =>
-      result.messages.filter((message) => message.ruleId === "no-restricted-imports"),
+      result.messages.filter(
+        (message) =>
+          message.ruleId === "no-restricted-imports" ||
+          message.ruleId === "no-restricted-syntax",
+      ),
     );
 
     expect(boundary).toEqual([]);
     expect(results.every((result) => result.errorCount === 0)).toBe(true);
   });
 
-  it("keeps the violation fixture out of the default lint", async () => {
+  it("keeps the violation fixtures out of the default lint", async () => {
     const eslint = new ESLint({ cwd: repoRoot });
-    const ignored = await eslint.isPathIgnored(
+    const fixtures = [
       "packages/dd-core/eslint-fixtures/imports-extract.ts",
-    );
+      "packages/dd-core/eslint-fixtures/imports-extract-relative.ts",
+      "packages/dd-core/eslint-fixtures/dynamic-import.ts",
+    ];
 
-    expect(ignored).toBe(true);
+    for (const fixture of fixtures) {
+      expect(await eslint.isPathIgnored(fixture)).toBe(true);
+    }
   });
 });
+
+async function boundaryMessages(file: string, ruleId: string) {
+  const eslint = new ESLint({ cwd: repoRoot, ignore: false });
+  const results = await eslint.lintFiles([file]);
+  return results.flatMap((result) =>
+    result.messages.filter((message) => message.ruleId === ruleId),
+  );
+}

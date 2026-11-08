@@ -39,7 +39,19 @@ export default defineConfig(
               ],
               message: boundaryMessage,
             },
+            {
+              regex: "(?:^|/)(?:\\.\\./)+extract(?:/|$)",
+              caseSensitive: true,
+              message: boundaryMessage,
+            },
           ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportExpression",
+          message: "dd-core must not use dynamic import.",
         },
       ],
       "@typescript-eslint/no-require-imports": "error",
