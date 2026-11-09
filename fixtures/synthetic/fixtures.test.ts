@@ -6,6 +6,34 @@ import { extractPages, foldText } from "./extract-text.mjs";
 import { isValidContainer } from "./iso6346.mjs";
 import { ELEMENT_KEYS, LABELS } from "./labels.mjs";
 
+const SPEC_ELEMENT_KEYS = [
+  "bl_number",
+  "container_number",
+  "port_of_discharge",
+  "billed_party_basis",
+  "invoice_date",
+  "invoice_due_date",
+  "free_time_days",
+  "free_time_start",
+  "free_time_end",
+  "container_availability_date",
+  "earliest_return_date",
+  "charged_dates",
+  "total_due",
+  "applicable_rule",
+  "rates",
+  "dispute_contact",
+  "dispute_info_link",
+  "dispute_timeframes",
+  "cert_rules_compliance",
+  "cert_no_contribution",
+] as const;
+
+const CERT_RULES =
+  "The charges are consistent with the Federal Maritime Commission's demurrage and detention rules, including 46 CFR part 541 and 46 CFR 545.5.";
+
+const BASIS = "Harbor Home Goods is the consignee named on the bill of lading.";
+
 const root = path.dirname(fileURLToPath(import.meta.url));
 const ids = [
   "clean",
@@ -117,6 +145,10 @@ function readInvoice(id: string): Invoice {
 }
 
 describe("synthetic fixtures", () => {
+  it("uses the 541.6 element keys in paragraph order", () => {
+    expect(ELEMENT_KEYS).toEqual([...SPEC_ELEMENT_KEYS]);
+  });
+
   beforeAll(async () => {
     for (const id of ids) {
       invoices.set(id, readInvoice(id));
@@ -189,7 +221,7 @@ describe("synthetic fixtures", () => {
     expect(shared).toEqual([["SLLU0000069", ["duplicate_a", "duplicate_b"]]]);
     const earlier = invoices.get("duplicate_a");
     const later = invoices.get("duplicate_b");
-    expect(earlier?.elements.bl_numbers?.text).toBe(later?.elements.bl_numbers?.text);
+    expect(earlier?.elements.bl_number?.text).toBe(later?.elements.bl_number?.text);
     expect(earlier?.elements.free_time_start?.text).toBe(later?.elements.free_time_start?.text);
     expect(earlier?.elements.free_time_end?.text).toBe(later?.elements.free_time_end?.text);
     expect(earlier?.elements.container_availability_date?.text).toBe(
@@ -267,8 +299,8 @@ describe("synthetic fixtures", () => {
     expect(invoice?.review_cases?.after_review.confirmed_absent).toEqual([
       "free_time_start",
       "free_time_end",
-      "certification_rules",
-      "certification_performance",
+      "cert_rules_compliance",
+      "cert_no_contribution",
     ]);
     expect(invoice?.review_cases?.after_review.finding).toEqual({
       rule: "R1",
@@ -283,6 +315,20 @@ describe("synthetic fixtures", () => {
       currency: "USD",
     });
     expect(invoice?.expected_findings).toEqual([]);
+  });
+
+  it("bills the consignee and certifies rule compliance on the clean invoice", () => {
+    for (const id of ids) {
+      expect(invoices.get(id)?.elements.billed_party_basis?.text).toBe(BASIS);
+    }
+    const clean = invoices.get("clean");
+    expect(clean?.elements.cert_rules_compliance).toEqual({
+      state: "present",
+      text: CERT_RULES,
+      page: 1,
+    });
+    const pages = pageText.get("clean") ?? [];
+    expect(foldText(pages[0] ?? "")).toContain(foldText(CERT_RULES));
   });
 
   it("records both free-time conventions and both arithmetic defects", () => {

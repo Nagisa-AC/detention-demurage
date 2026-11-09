@@ -8,12 +8,12 @@
   "billed_party": "Harbor Home Goods",
   "reissue_of": null,
   "elements": {
-    "bl_numbers": {
+    "bl_number": {
       "state": "present",
       "text": "SYN-BL-1006",
       "page": 1
     },
-    "container_numbers": {
+    "container_number": {
       "state": "present",
       "text": "SLLU0000069",
       "page": 1
@@ -25,7 +25,7 @@
     },
     "billed_party_basis": {
       "state": "present",
-      "text": "Harbor Home Goods is the shipper named on the bill of lading.",
+      "text": "Harbor Home Goods is the consignee named on the bill of lading.",
       "page": 1
     },
     "invoice_date": {
@@ -72,12 +72,12 @@
       "text": "1000.00 USD",
       "page": 1
     },
-    "rate_basis": {
+    "applicable_rule": {
       "state": "present",
       "text": "Sample Line Logistics demurrage schedule SL-1",
       "page": 1
     },
-    "rate": {
+    "rates": {
       "state": "present",
       "text": "200.00 USD per day",
       "page": 1
@@ -87,7 +87,7 @@
       "text": "disputes@sample-line.example",
       "page": 1
     },
-    "dispute_instructions_url": {
+    "dispute_info_link": {
       "state": "present",
       "text": "https://example.com/sample-line/mitigation",
       "page": 1
@@ -97,12 +97,12 @@
       "text": "Request a waiver within 30 days. Sample Line Logistics resolves the request within 30 days.",
       "page": 1
     },
-    "certification_rules": {
+    "cert_rules_compliance": {
       "state": "present",
-      "text": "The charges are consistent with the Federal Maritime Commission's demurrage and detention rules.",
+      "text": "The charges are consistent with the Federal Maritime Commission's demurrage and detention rules, including 46 CFR part 541 and 46 CFR 545.5.",
       "page": 1
     },
-    "certification_performance": {
+    "cert_no_contribution": {
       "state": "present",
       "text": "The billing party's performance did not cause or contribute to these charges.",
       "page": 1

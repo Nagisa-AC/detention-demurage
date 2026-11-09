@@ -4,22 +4,22 @@ import { isValidContainer } from "./iso6346.mjs";
 const BILLING_PARTY = "Sample Line Logistics";
 const BILLED_PARTY = "Harbor Home Goods";
 const PORT = "Port Sample";
-const BASIS = "Harbor Home Goods is the shipper named on the bill of lading.";
+const BASIS = "Harbor Home Goods is the consignee named on the bill of lading.";
 const RATE_BASIS = "Sample Line Logistics demurrage schedule SL-1";
 const DISPUTE_URL = "https://example.com/sample-line/mitigation";
 const DISPUTE_TIME =
   "Request a waiver within 30 days. Sample Line Logistics resolves the request within 30 days.";
 const DISPUTE_CONTACT = "disputes@sample-line.example";
 const CERT_RULES =
-  "The charges are consistent with the Federal Maritime Commission's demurrage and detention rules.";
+  "The charges are consistent with the Federal Maritime Commission's demurrage and detention rules, including 46 CFR part 541 and 46 CFR 545.5.";
 const CERT_PERFORMANCE =
   "The billing party's performance did not cause or contribute to these charges.";
 
 const MISSING_FIELDS = [
   "free_time_start",
   "free_time_end",
-  "certification_rules",
-  "certification_performance",
+  "cert_rules_compliance",
+  "cert_no_contribution",
 ];
 
 export const INVOICE_IDS = [
@@ -78,8 +78,8 @@ function row(container, from, to, rate, placement, amount = money(inclusiveDays(
 
 function presentFields(input) {
   return {
-    bl_numbers: { text: input.bl },
-    container_numbers: { text: input.container },
+    bl_number: { text: input.bl },
+    container_number: { text: input.container },
     port_of_discharge: { text: PORT },
     billed_party_basis: { text: BASIS },
     invoice_date: { text: input.invoiceDate },
@@ -90,13 +90,13 @@ function presentFields(input) {
     container_availability_date: { text: input.freeStart },
     charged_dates: { text: `${input.chargedFrom} through ${input.chargedTo}` },
     total_due: { text: `${input.total} USD` },
-    rate_basis: { text: RATE_BASIS },
-    rate: { text: input.rateText },
+    applicable_rule: { text: RATE_BASIS },
+    rates: { text: input.rateText },
     dispute_contact: { text: DISPUTE_CONTACT, page: input.contactPage ?? 1 },
-    dispute_instructions_url: { text: DISPUTE_URL },
+    dispute_info_link: { text: DISPUTE_URL },
     dispute_timeframes: { text: DISPUTE_TIME },
-    certification_rules: { text: CERT_RULES },
-    certification_performance: { text: CERT_PERFORMANCE },
+    cert_rules_compliance: { text: CERT_RULES },
+    cert_no_contribution: { text: CERT_PERFORMANCE },
   };
 }
 
@@ -185,8 +185,8 @@ const missing = buildInvoice({
   absent: MISSING_FIELDS,
   absentText: {
     free_time_end: "2026-06-12",
-    certification_rules: CERT_RULES,
-    certification_performance: CERT_PERFORMANCE,
+    cert_rules_compliance: CERT_RULES,
+    cert_no_contribution: CERT_PERFORMANCE,
   },
   lines: [row("SLLU0000027", "2026-06-13", "2026-06-15", "100.00", onPage(1))],
   reviewCases: {
@@ -413,7 +413,7 @@ assert(sumAmounts(arithmetic.charge_lines) === "3200.00", "arithmetic line sum")
 assert(arithmetic.total_due === "3450.00", "arithmetic total");
 assert(money(6, "250.00") === "1500.00", "arithmetic true product");
 assert(sumAmounts(splitRow.charge_lines) === "900.00", "split total");
-assert(duplicateA.elements.bl_numbers.text === duplicateB.elements.bl_numbers.text, "shared bl");
+assert(duplicateA.elements.bl_number.text === duplicateB.elements.bl_number.text, "shared bl");
 assert(
   duplicateA.elements.container_availability_date.text
     === duplicateB.elements.container_availability_date.text,
