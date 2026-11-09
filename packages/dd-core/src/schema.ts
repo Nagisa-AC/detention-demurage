@@ -1,29 +1,7 @@
 import { z } from "zod";
+import { ELEMENT_KEYS, type ElementKey } from "./elements.js";
 
-export const ELEMENT_KEYS = [
-  "bl_number",
-  "container_number",
-  "port_of_discharge",
-  "billed_party_basis",
-  "invoice_date",
-  "invoice_due_date",
-  "free_time_days",
-  "free_time_start",
-  "free_time_end",
-  "container_availability_date",
-  "earliest_return_date",
-  "charged_dates",
-  "total_due",
-  "applicable_rule",
-  "rates",
-  "dispute_contact",
-  "dispute_info_link",
-  "dispute_timeframes",
-  "cert_rules_compliance",
-  "cert_no_contribution",
-] as const;
-
-export type ElementKey = (typeof ELEMENT_KEYS)[number];
+export { ELEMENT_KEYS, type ElementKey };
 
 export const elementKeySchema = z.enum(ELEMENT_KEYS);
 

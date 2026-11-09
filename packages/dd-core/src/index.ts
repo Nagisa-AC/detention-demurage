@@ -1,7 +1,9 @@
 export const packageId = "dd-core";
 
+export { ELEMENT_KEYS, ELEMENTS } from "./elements.js";
+export type { Applicability, ElementEntry, ElementKey } from "./elements.js";
+
 export {
-  ELEMENT_KEYS,
   chargeLineSchema,
   elementKeySchema,
   elementRecordSchema,
@@ -17,7 +19,6 @@ export {
 
 export type {
   ChargeLine,
-  ElementKey,
   ElementValue,
   Finding,
   FixtureTruth,
