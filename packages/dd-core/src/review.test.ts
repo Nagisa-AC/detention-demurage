@@ -7,7 +7,7 @@ import { assignPresence, forRules } from "./presence.js";
 import {
   carryDecisions,
   isConfirmedAbsent,
-  restoreElement,
+  loadReview,
   ReviewError,
   startReview,
   type SavedDecision,
@@ -47,11 +47,19 @@ describe("review", () => {
     expect(result.acknowledged_pages).toEqual([1]);
     expect(result.line_approval).toEqual({ decided_by: name, decided_at: when });
 
-    const saved = JSON.parse(JSON.stringify(result.elements.free_time_start)) as unknown;
-    expect(isConfirmedAbsent(saved)).toBe(false);
-    const decision = result.decisions.find((entry) => entry.element_key === "free_time_start");
-    expect(decision?.document_hash).toBe("hash-missing");
-    expect(isConfirmedAbsent(restoreElement(decision as SavedDecision))).toBe(true);
+    const saved = JSON.parse(JSON.stringify(result)) as unknown;
+    const roundTrip = saved as { elements: { free_time_start: unknown } };
+    expect(isConfirmedAbsent(roundTrip.elements.free_time_start)).toBe(false);
+    const loaded = loadReview(saved, 1);
+    for (const key of removed) {
+      expect(isConfirmedAbsent(loaded.elements[key]), key).toBe(true);
+      expect(loaded.elements[key]).toMatchObject({ decided_by: name, decided_at: when, page: null });
+    }
+
+    const missingPage = JSON.parse(JSON.stringify(result)) as { acknowledged_pages: number[] };
+    missingPage.acknowledged_pages = [];
+    expect(() => loadReview(missingPage, 1)).toThrow(ReviewError);
+    expect(() => loadReview(missingPage, 1)).toThrow("acknowledges every page");
   });
 
   it("requires an acknowledgement for every page, not one open of the file", () => {
@@ -72,26 +80,54 @@ describe("review", () => {
     expect(isConfirmedAbsent(session.view().elements.free_time_start)).toBe(true);
   });
 
-  it("carries a decision only for the same document hash and the same extracted text", () => {
-    const first = sessionFor("missing_elements");
-    first.acknowledge(1);
-    first.confirmAbsent("free_time_start");
-    const decision = first.view().decisions.find((entry) => entry.element_key === "free_time_start");
+  it("does not restore a forged confirmed absence", () => {
+    const forged: SavedDecision = {
+      document_hash: "hash-missing",
+      element_key: "free_time_start",
+      extracted_text: null,
+      outcome: "confirmed_absent",
+      page: null,
+      decided_by: name,
+      decided_at: when,
+    };
+    const { invoice, elements } = prepared("missing_elements");
+    const carried = carryDecisions("hash-missing", [forged], elements, invoice);
+    expect(isConfirmedAbsent(carried.elements.free_time_start)).toBe(false);
+    expect(carried.elements.free_time_start).toEqual({ state: "suggested_absent", page: null });
+    expect(carried.applied).toEqual([]);
+    expect(() => loadReview(forged, 1)).toThrow(ReviewError);
+  });
+
+  it("carries a present correction only for the same document hash and the same extracted text", () => {
+    const { invoice, elements } = prepared("missing_elements");
+    const unread: ElementRecord = {
+      ...elements,
+      invoice_date: { state: "unreadable", text: "2026-06-01", page: 1 },
+    };
+    const session = startReview({
+      documentHash: "hash-missing",
+      invoice,
+      elements: unread,
+      pages: 1,
+      name,
+      at: when,
+    });
+    session.correct("invoice_date", "2026-06-02");
+    const decision = session.view().decisions.find((entry) => entry.element_key === "invoice_date");
     if (decision === undefined) throw new Error("missing decision");
 
-    const { invoice, elements } = prepared("missing_elements");
-    const same = carryDecisions("hash-missing", [decision], elements, invoice);
-    expect(isConfirmedAbsent(same.elements.free_time_start)).toBe(true);
+    const same = carryDecisions("hash-missing", [decision], unread, invoice);
+    expect(same.elements.invoice_date).toMatchObject({ state: "present", text: "2026-06-02", value: "2026-06-02" });
 
     const changed: ElementRecord = {
-      ...elements,
-      free_time_start: { state: "present", text: "2026-06-08", value: "2026-06-08", page: 1 },
+      ...unread,
+      invoice_date: { state: "unreadable", text: "03/06/2026", page: 1 },
     };
     const drifted = carryDecisions("hash-missing", [decision], changed, invoice);
-    expect(drifted.elements.free_time_start).toMatchObject({ state: "present", text: "2026-06-08" });
+    expect(drifted.elements.invoice_date).toMatchObject({ state: "unreadable", text: "03/06/2026" });
 
-    const reissue = carryDecisions("hash-reissue", [decision], elements, invoice);
-    expect(reissue.elements.free_time_start).toEqual({ state: "suggested_absent", page: null });
+    const reissue = carryDecisions("hash-reissue", [decision], unread, invoice);
+    expect(reissue.elements.invoice_date).toEqual({ state: "unreadable", text: "2026-06-01", page: 1 });
     expect(reissue.applied).toEqual([]);
   });
 

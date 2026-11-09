@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { ELEMENT_KEYS, assignPresence, isConfirmedAbsent, restoreElement, stitchedInvoiceSchema, type SavedDecision } from "dd-core";
+import { ELEMENT_KEYS, assignPresence, isConfirmedAbsent, loadReview, stitchedInvoiceSchema } from "dd-core";
 import { describe, expect, it } from "vitest";
 import { runReview } from "./review-command.js";
 
@@ -46,14 +46,11 @@ describe("dd review", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(dir, "review.json"), "utf8")) as {
       document_hash: string;
       acknowledged_pages: number[];
-      elements: Record<string, unknown>;
-      decisions: SavedDecision[];
+      elements: { free_time_start: unknown };
     };
     expect(saved.document_hash).toBe(createHash("sha256").update(pdf).digest("hex"));
     expect(saved.acknowledged_pages).toEqual([1]);
     expect(isConfirmedAbsent(saved.elements.free_time_start)).toBe(false);
-    const decision = saved.decisions.find((entry) => entry.element_key === "free_time_start");
-    expect(decision).toBeDefined();
-    expect(isConfirmedAbsent(restoreElement(decision as SavedDecision))).toBe(true);
+    expect(isConfirmedAbsent(loadReview(saved, 1).elements.free_time_start)).toBe(true);
   });
 });

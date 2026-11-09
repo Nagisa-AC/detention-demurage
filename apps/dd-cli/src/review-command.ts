@@ -64,7 +64,7 @@ export async function runReview(io: ReviewIo): Promise<number> {
         if (command === "finish") {
           const result = session.finish();
           fs.mkdirSync(args.outDir, { recursive: true });
-          fs.writeFileSync(path.join(args.outDir, "review.json"), `${JSON.stringify({ ...result, movement: file.movement }, null, 2)}\n`);
+          fs.writeFileSync(path.join(args.outDir, "review.json"), `${JSON.stringify(result, null, 2)}\n`);
           return 0;
         }
         apply(session, command);
@@ -81,7 +81,6 @@ export async function runReview(io: ReviewIo): Promise<number> {
 
 function readInvoiceFile(filePath: string): {
   pages: number;
-  movement: "import" | "export";
   invoice: ReturnType<typeof stitchedInvoiceSchema.parse>;
   elements: ReturnType<typeof elementRecordSchema.parse>;
 } {
@@ -94,7 +93,6 @@ function readInvoiceFile(filePath: string): {
   }
   return {
     pages: record.pages,
-    movement: record.movement,
     invoice: stitchedInvoiceSchema.parse(record.invoice),
     elements: elementRecordSchema.parse(record.elements),
   };

@@ -4,12 +4,12 @@ import { isUnreadable, parseDate, type FormatHint } from "./normalize/dates.js";
 import { parseContainer } from "./normalize/container.js";
 import { parseMoney } from "./normalize/money.js";
 import type { ElementRecord, ElementValue, StitchedChargeLine, StitchedInvoice, UnresolvedFragment } from "./schema.js";
-import { stitchedInvoiceSchema } from "./schema.js";
+import { elementValueSchema, regionSchema, stitchedInvoiceSchema } from "./schema.js";
 
 /**
  * Only this file can set the brand. A ConfirmedAbsent value requires it,
  * so an object literal in any other module does not typecheck.
- * JSON drops the symbol. Saved decisions are rebuilt through restoreElement.
+ * JSON drops the symbol. A confirmed absence comes back only through loadReview.
  */
 const confirmedAbsentBrand: unique symbol = Symbol("confirmedAbsent");
 
@@ -42,7 +42,8 @@ const DATE_KEYS = new Set<ElementKey>([
   "earliest_return_date",
 ]);
 
-const ELEMENT_OUTCOMES = ["confirmed_absent", "present", "unreadable"] as const;
+type ElementOutcome = "confirmed_absent" | "present" | "unreadable";
+const CARRIED_OUTCOMES = ["present", "unreadable"] as const;
 
 export const savedDecisionSchema = z.strictObject({
   document_hash: z.string().min(1),
@@ -88,40 +89,88 @@ export function isConfirmedAbsent(value: unknown): value is ConfirmedAbsent {
   return typeof value === "object" && value !== null && confirmedAbsentBrand in value;
 }
 
-/** Rebuild a saved element decision. This is the only way a loaded absence gets the brand. */
-export function restoreElement(decision: SavedDecision): ReviewedElement {
-  const saved = savedDecisionSchema.parse(decision);
-  if (saved.outcome === "confirmed_absent") {
-    return confirmAbsent({ decided_by: saved.decided_by, decided_at: saved.decided_at });
+const plainConfirmedAbsentSchema = z.strictObject({
+  state: z.literal("confirmed_absent"),
+  text: z.string().exactOptional(),
+  value: z.string().exactOptional(),
+  page: z.null(),
+  region: regionSchema.exactOptional(),
+  decided_by: z.string().min(1).exactOptional(),
+  decided_at: z.string().min(1).exactOptional(),
+});
+
+const storedElementSchema = z.union([elementValueSchema, plainConfirmedAbsentSchema]);
+
+const storedElementRecordSchema = z.strictObject(
+  Object.fromEntries(ELEMENT_KEYS.map((key) => [key, storedElementSchema])) as Record<ElementKey, typeof storedElementSchema>,
+);
+
+const reviewRecordSchema = z.strictObject({
+  document_hash: z.string().min(1),
+  acknowledged_pages: z.array(z.int().positive()),
+  elements: storedElementRecordSchema,
+  invoice: stitchedInvoiceSchema,
+  decisions: z.array(savedDecisionSchema),
+  line_approval: z.strictObject({
+    decided_by: z.string().min(1),
+    decided_at: z.string().min(1),
+  }).nullable(),
+});
+
+/**
+ * Put the brand back on a finished review.
+ * A loose decision cannot do this. The record has to be the finished review
+ * for its own document hash, with every page acknowledged and the lines approved.
+ */
+export function loadReview(record: unknown, pages: number): ReviewResult {
+  if (!Number.isInteger(pages) || pages < 1) throw new ReviewError("A review needs at least one page.");
+  const parsed = reviewRecordSchema.safeParse(record);
+  if (!parsed.success) throw new ReviewError("That record is not a finished review.");
+  const saved = parsed.data;
+  if (saved.line_approval === null) throw new ReviewError("A finished review approves the charge lines.");
+  if (saved.invoice.unresolved.length > 0) throw new ReviewError("Finish while a fragment is unresolved.");
+  requireAcknowledged(saved.acknowledged_pages, pages);
+
+  const absences = new Map<ElementKey, SavedDecision>();
+  for (const decision of saved.decisions) {
+    if (decision.document_hash !== saved.document_hash) {
+      throw new ReviewError("That decision is for a different document.");
+    }
+    if (decision.outcome !== "confirmed_absent") continue;
+    if (!isElementKey(decision.element_key)) throw new ReviewError("That decision is not an element.");
+    absences.set(decision.element_key, decision);
   }
-  if (saved.outcome === "present") {
-    if (saved.text === undefined || saved.page === null) throw new ReviewError("A present decision has text and a page.");
-    const element: ElementValue = {
-      state: "present",
-      text: saved.text,
-      page: saved.page,
-      decided_by: saved.decided_by,
-      decided_at: saved.decided_at,
-    };
-    if (saved.value !== undefined) element.value = saved.value;
-    return element;
+
+  const elements = {} as Record<ElementKey, ReviewedElement>;
+  for (const key of ELEMENT_KEYS) {
+    const element = saved.elements[key];
+    const decision = absences.get(key);
+    if (element.state === "confirmed_absent") {
+      if (decision === undefined) throw new ReviewError(`${key} has no confirmed-absent decision.`);
+      elements[key] = confirmAbsent({ decided_by: decision.decided_by, decided_at: decision.decided_at });
+      continue;
+    }
+    if (decision !== undefined) throw new ReviewError(`${key} is ${element.state}.`);
+    if (element.state === "suggested_absent" || element.state === "unreadable") {
+      throw new ReviewError(`Finish while ${key} is ${element.state}.`);
+    }
+    elements[key] = element;
   }
-  if (saved.outcome === "unreadable") {
-    if (saved.text === undefined || saved.page === null) throw new ReviewError("An unreadable decision has text and a page.");
-    return {
-      state: "unreadable",
-      text: saved.text,
-      page: saved.page,
-      decided_by: saved.decided_by,
-      decided_at: saved.decided_at,
-    };
-  }
-  throw new ReviewError("That decision is not an element.");
+
+  return {
+    document_hash: saved.document_hash,
+    acknowledged_pages: [...saved.acknowledged_pages].sort((left, right) => left - right),
+    elements,
+    invoice: saved.invoice,
+    decisions: saved.decisions,
+    line_approval: saved.line_approval,
+  };
 }
 
 /**
- * Decisions apply only when the document hash matches.
- * An element decision also requires the extracted text to be unchanged.
+ * Loose decisions apply only when the document hash matches.
+ * Present and unreadable outcomes also require the extracted text to be unchanged.
+ * A confirmed absence is never carried from a loose decision.
  * A different file, such as a reissue, starts with no decisions.
  */
 export function carryDecisions(
@@ -137,7 +186,8 @@ export function carryDecisions(
 
   for (const decision of decisions) {
     if (decision.document_hash !== documentHash) continue;
-    if (isElementKey(decision.element_key) && isElementOutcome(decision.outcome)) {
+    if (decision.outcome === "confirmed_absent") continue;
+    if (isElementKey(decision.element_key) && isCarriedOutcome(decision.outcome)) {
       const current = elements[decision.element_key];
       if (decision.extracted_text !== extractedText(current)) continue;
       chosen.set(decision.element_key, decision);
@@ -149,7 +199,7 @@ export function carryDecisions(
   }
 
   for (const [key, decision] of chosen) {
-    carried[key] = restoreElement(decision);
+    carried[key] = restoreCarried(decision);
     applied.push(decision);
   }
 
@@ -423,7 +473,7 @@ export class ReviewSession {
   private elementDecision(
     key: ElementKey,
     current: ReviewedElement,
-    outcome: (typeof ELEMENT_OUTCOMES)[number],
+    outcome: ElementOutcome,
     extra: { page: number | null; text?: string | undefined; value?: string | undefined; reason?: string | undefined },
   ): SavedDecision {
     const decision: SavedDecision = {
@@ -501,8 +551,46 @@ function isElementKey(value: string): value is ElementKey {
   return (ELEMENT_KEYS as readonly string[]).includes(value);
 }
 
-function isElementOutcome(value: SavedDecision["outcome"]): value is (typeof ELEMENT_OUTCOMES)[number] {
-  return (ELEMENT_OUTCOMES as readonly string[]).includes(value);
+function isCarriedOutcome(value: SavedDecision["outcome"]): value is (typeof CARRIED_OUTCOMES)[number] {
+  return (CARRIED_OUTCOMES as readonly string[]).includes(value);
+}
+
+function restoreCarried(decision: SavedDecision): ElementValue {
+  const saved = savedDecisionSchema.parse(decision);
+  if (saved.outcome === "present") {
+    if (saved.text === undefined || saved.page === null) throw new ReviewError("A present decision has text and a page.");
+    const element: ElementValue = {
+      state: "present",
+      text: saved.text,
+      page: saved.page,
+      decided_by: saved.decided_by,
+      decided_at: saved.decided_at,
+    };
+    if (saved.value !== undefined) element.value = saved.value;
+    return element;
+  }
+  if (saved.outcome === "unreadable") {
+    if (saved.text === undefined || saved.page === null) throw new ReviewError("An unreadable decision has text and a page.");
+    return {
+      state: "unreadable",
+      text: saved.text,
+      page: saved.page,
+      decided_by: saved.decided_by,
+      decided_at: saved.decided_at,
+    };
+  }
+  throw new ReviewError("A confirmed absence is restored from a finished review.");
+}
+
+function requireAcknowledged(acknowledged: readonly number[], pages: number): void {
+  const seen = new Set<number>();
+  for (const page of acknowledged) {
+    if (page > pages) throw new ReviewError(`Page ${page} is not in this invoice.`);
+    seen.add(page);
+  }
+  for (let page = 1; page <= pages; page += 1) {
+    if (!seen.has(page)) throw new ReviewError("A finished review acknowledges every page.");
+  }
 }
 
 function isLineField(value: string): value is LineField {
