@@ -2,6 +2,7 @@ import { ELEMENTS, ELEMENT_KEYS, type ElementKey } from "./elements.js";
 import { isUnreadable, parseDate, type FormatHint } from "./normalize/dates.js";
 import { parseContainer } from "./normalize/container.js";
 import { parseMoney } from "./normalize/money.js";
+import { isConfirmedAbsent, type ConfirmedAbsent } from "./review.js";
 import {
   elementRecordSchema,
   type ElementRecord,
@@ -44,13 +45,15 @@ export type RuleElement =
   | {
       state: "not_applicable";
       page: null;
-    };
+    }
+  | ConfirmedAbsent;
 
 /**
  * Drop text and value when the element is unreadable. Rules call this, not the raw element.
  * A rule that reads `element.text` or `element.value` on an unreadable element is wrong.
  */
-export function forRules(element: ElementValue): RuleElement {
+export function forRules(element: ElementValue | ConfirmedAbsent): RuleElement {
+  if (isConfirmedAbsent(element)) return element;
   if (element.state === "unreadable") {
     return { state: "unreadable", page: seenPage(element) };
   }
@@ -60,7 +63,9 @@ export function forRules(element: ElementValue): RuleElement {
     if (element.value !== undefined) rule.value = element.value;
     return rule;
   }
-  return { state: element.state, page: null };
+  if (element.state === "suggested_absent") return { state: "suggested_absent", page: null };
+  if (element.state === "not_applicable") return { state: "not_applicable", page: null };
+  throw new Error("That element is not a rule input.");
 }
 
 function seenPage(element: ElementValue): number {
