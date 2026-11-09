@@ -7,5 +7,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dd-core": "workspace:*"
   }
 }

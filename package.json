@@ -12,7 +12,8 @@
     "test": "vitest run",
     "fixtures:render": "node fixtures/synthetic/render.mjs",
     "fixtures:check": "node fixtures/synthetic/check.mjs",
-    "extract:fixture": "tsx packages/extract/src/live-check.ts"
+    "extract:fixture": "tsx packages/extract/src/live-check.ts",
+    "dd": "tsx apps/dd-cli/src/main.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
