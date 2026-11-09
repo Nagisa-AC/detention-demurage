@@ -14,28 +14,40 @@ export type { Money, MoneyHint } from "./normalize/money.js";
 export { ELEMENT_KEYS, ELEMENTS } from "./elements.js";
 export type { Applicability, ElementEntry, ElementKey } from "./elements.js";
 
+export { StitchError, stitch } from "./stitch.js";
+
 export {
   chargeLineSchema,
+  elementConflictSchema,
   elementKeySchema,
   elementRecordSchema,
   elementValueSchema,
   findingSchema,
   fixtureTruthSchema,
+  headerConflictSchema,
   invoiceExtractionSchema,
   pageExtractionSchema,
   printedChargeLineSchema,
   printedElementSchema,
   regionSchema,
+  stitchedChargeLineSchema,
+  stitchedInvoiceSchema,
+  unresolvedFragmentSchema,
 } from "./schema.js";
 
 export type {
   ChargeLine,
+  ElementConflict,
   ElementValue,
   Finding,
   FixtureTruth,
+  HeaderConflict,
   InvoiceExtraction,
   PageExtraction,
   PrintedChargeLine,
   PrintedElement,
   Region,
+  StitchedChargeLine,
+  StitchedInvoice,
+  UnresolvedFragment,
 } from "./schema.js";

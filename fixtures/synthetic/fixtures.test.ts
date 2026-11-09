@@ -377,6 +377,11 @@ describe("synthetic fixtures", () => {
     expect(pages).toHaveLength(3);
     const line = invoice?.charge_lines.find((entry) => entry.placement.kind === "split");
     expect(line?.placement).toEqual({ kind: "split", head_page: 2, tail_page: 3 });
+    const onPage2 = invoice?.charge_lines.filter((entry) => {
+      const placement = entry.placement;
+      return (placement.kind === "row" && placement.page === 2) || (placement.kind === "split" && placement.head_page === 2);
+    });
+    expect(onPage2?.at(-1)?.placement.kind).toBe("split");
     if (!line || !pages) {
       return;
     }
