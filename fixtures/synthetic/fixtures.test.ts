@@ -190,11 +190,19 @@ describe("synthetic fixtures", () => {
     }
   });
 
-  it("runs the carrier denylist on extracted text", () => {
-    for (const id of ids) {
-      const text = (pageText.get(id) ?? []).join("\n");
+  it("runs the carrier denylist across fixtures", async () => {
+    const fixturesRoot = path.resolve(root, "..");
+    const files = fixtureFiles(fixturesRoot);
+    const relative = files.map((file) => path.relative(fixturesRoot, file));
+    expect(relative).toContain(path.join("config", "harbor_home.yaml"));
+    expect(relative).toContain(path.join("synthetic", "clean.pdf"));
+    expect(relative.some((file) => file.endsWith(".test.ts"))).toBe(false);
+
+    for (const file of files) {
+      const text = file.endsWith(".pdf") ? (await extractPages(file)).join("\n") : fs.readFileSync(file, "utf8");
+      const folded = text.toLowerCase();
       for (const name of carrierNames) {
-        expect(text.toLowerCase()).not.toContain(name.toLowerCase());
+        expect(folded, `${path.relative(fixturesRoot, file)} contains ${name}`).not.toContain(name.toLowerCase());
       }
     }
   });
@@ -380,3 +388,16 @@ describe("synthetic fixtures", () => {
     expect(foldText(pages[2] ?? "")).toContain(DISPUTE);
   });
 });
+
+function fixtureFiles(directory: string): string[] {
+  const found: string[] = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...fixtureFiles(full));
+    } else if (!entry.name.endsWith(".test.ts")) {
+      found.push(full);
+    }
+  }
+  return found;
+}
