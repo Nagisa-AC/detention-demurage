@@ -26,6 +26,9 @@ export type { LateConfig, LateInvoice, LateResult } from "./rules/lateIssuance.j
 export { freeTime } from "./rules/freeTime.js";
 export type { FreeConfig, FreeInvoice, FreeLine, FreeResult } from "./rules/freeTime.js";
 
+export { arithmetic } from "./rules/arithmetic.js";
+export type { ArithmeticInvoice, ArithmeticLine, ArithmeticResult } from "./rules/arithmetic.js";
+
 export { carryDecisions, isConfirmedAbsent, loadReview, startReview, ReviewError, ReviewSession, savedDecisionSchema } from "./review.js";
 export type { ConfirmedAbsent, ReviewResult, ReviewedElement, SavedDecision } from "./review.js";
 
