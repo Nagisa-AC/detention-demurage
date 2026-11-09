@@ -1,6 +1,7 @@
 export const packageId = "dd-extract";
 
-export { costUsd } from "./cost.js";
+export { priceUsage } from "./cost.js";
+export type { Priced } from "./cost.js";
 export type { Usage } from "./cost.js";
 
 export { extract } from "./extract.js";

@@ -9,17 +9,33 @@ export type Usage = {
   cache_read_tokens: number;
 };
 
+type Rates = {
+  input: string;
+  output: string;
+  cache5m: string;
+  cache1h: string;
+  cacheRead: string;
+};
+
 /**
- * Sonnet 5.5 list prices times 1.1 for US inference.
- * Input $2.20, output $11, 5-minute cache write $2.75, 1-hour cache write $4.40, cache read $0.11, per million tokens.
+ * List price per million tokens, already including the 1.1 US-inference multiplier.
+ * Sonnet 5.5: input $2.20, output $11, 5-minute cache write $2.75, 1-hour cache write $4.40, cache read $0.11.
+ * A model that is not listed has no price. Nothing here is a stand-in for another model.
  */
-const PER_MILLION = {
-  input: "2.2",
-  output: "11",
-  cache5m: "2.75",
-  cache1h: "4.4",
-  cacheRead: "0.11",
-} as const;
+const PRICES: Record<string, Rates> = {
+  "claude-sonnet-5-5": {
+    input: "2.2",
+    output: "11",
+    cache5m: "2.75",
+    cache1h: "4.4",
+    cacheRead: "0.11",
+  },
+};
+
+export type Priced = {
+  cost_usd: string | null;
+  cost_note?: string;
+};
 
 export function emptyUsage(): Usage {
   return {
@@ -41,13 +57,19 @@ export function addUsage(left: Usage, right: Usage): Usage {
   };
 }
 
-/** Dollar cost as a decimal string. A JavaScript float is not used. */
-export function costUsd(usage: Usage): string {
-  const total = part(usage.input_tokens, PER_MILLION.input)
-    .plus(part(usage.output_tokens, PER_MILLION.output))
-    .plus(part(usage.cache_5m_tokens, PER_MILLION.cache5m))
-    .plus(part(usage.cache_1h_tokens, PER_MILLION.cache1h))
-    .plus(part(usage.cache_read_tokens, PER_MILLION.cacheRead));
+/** Dollar cost for a known model, or null and a note when this model has no price. */
+export function priceUsage(model: string, usage: Usage): Priced {
+  const rates = PRICES[model];
+  if (rates === undefined) return { cost_usd: null, cost_note: `No price for ${model}.` };
+  return { cost_usd: formatCost(rates, usage) };
+}
+
+function formatCost(rates: Rates, usage: Usage): string {
+  const total = part(usage.input_tokens, rates.input)
+    .plus(part(usage.output_tokens, rates.output))
+    .plus(part(usage.cache_5m_tokens, rates.cache5m))
+    .plus(part(usage.cache_1h_tokens, rates.cache1h))
+    .plus(part(usage.cache_read_tokens, rates.cacheRead));
   const fixed = total.toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
   return fixed === "" ? "0" : fixed;
 }

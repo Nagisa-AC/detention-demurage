@@ -2,10 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { APIError, RateLimitError } from "@anthropic-ai/sdk";
 import { ELEMENT_KEYS, fixtureTruthSchema, invoiceExtractionSchema, type FixtureTruth } from "dd-core";
 import { PDFDocument } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { costUsd, type Usage } from "./cost.js";
+import { priceUsage, type Usage } from "./cost.js";
 import { extract, type PageReader } from "./extract.js";
 import type { ModelResponse } from "./anthropic.js";
 import { buildAnthropicRequest } from "./request.js";
@@ -40,12 +41,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("costUsd", () => {
-  it("prices Sonnet 5.5 tokens at the US rate", () => {
-    expect(costUsd(oneCall)).toBe("0.0077");
-    expect(costUsd({ ...oneCall, input_tokens: 0, output_tokens: 0, cache_read_tokens: 1_000_000 })).toBe("0.11");
-    expect(costUsd({ ...oneCall, input_tokens: 0, output_tokens: 0, cache_5m_tokens: 1_000_000 })).toBe("2.75");
-    expect(costUsd({ ...oneCall, input_tokens: 0, output_tokens: 0, cache_1h_tokens: 1_000_000 })).toBe("4.4");
+describe("priceUsage", () => {
+  it("prices Sonnet 5.5 tokens at the US rate and leaves other models unpriced", () => {
+    expect(priceUsage("claude-sonnet-5-5", oneCall)).toEqual({ cost_usd: "0.0077" });
+    expect(priceUsage("claude-sonnet-5-5", { ...oneCall, input_tokens: 0, output_tokens: 0, cache_read_tokens: 1_000_000 })).toEqual({ cost_usd: "0.11" });
+    expect(priceUsage("claude-sonnet-5-5", { ...oneCall, input_tokens: 0, output_tokens: 0, cache_5m_tokens: 1_000_000 })).toEqual({ cost_usd: "2.75" });
+    expect(priceUsage("claude-sonnet-5-5", { ...oneCall, input_tokens: 0, output_tokens: 0, cache_1h_tokens: 1_000_000 })).toEqual({ cost_usd: "4.4" });
+    expect(priceUsage("claude-opus-5-5", oneCall)).toEqual({ cost_usd: null, cost_note: "No price for claude-opus-5-5." });
   });
 });
 
@@ -130,6 +132,7 @@ describe("extract", () => {
           expect(page.record.prompt_version).toBe("1");
           expect(page.record.schema_version).toBe("1");
           expect(page.record.cost_usd).toBe("0.0077");
+          expect(page.record.cost_note).toBeUndefined();
           expect(page.record.inference_geo).toBe("us");
           expect(Number.isInteger(page.record.latency_ms)).toBe(true);
           const pageDir = path.join(dir, "pages", String(page.record.page).padStart(3, "0"));
@@ -170,7 +173,8 @@ describe("extract", () => {
       expect(retried.pages[0]?.record.model).toBe("claude-opus-5-5");
       expect(retried.pages[0]?.record.effort).toBe("high");
       expect(retried.pages[0]?.record.attempts).toBe(2);
-      expect(retried.pages[0]?.record.cost_usd).toBe("0.0154");
+      expect(retried.pages[0]?.record.cost_usd).toBeNull();
+      expect(retried.pages[0]?.record.cost_note).toBe("No price for claude-opus-5-5.");
       expect(fs.existsSync(path.join(dir, "pages/001/attempt-2.txt"))).toBe(true);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -205,13 +209,63 @@ describe("extract", () => {
         provider: "fake",
         fake: () => {
           calls += 1;
-          throw new Error("socket");
+          throw new Error("socket dropped the invoice body");
         },
       });
       expect(calls).toBe(1);
-      expect(thrown.pages[0]?.record.reason).toBe("The model request failed.");
+      expect(thrown.pages[0]?.record.reason).toBe("Error");
+      expect(thrown.pages[0]?.record.reason).not.toContain("invoice");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+
+    calls = 0;
+    const apiDir = tempDir();
+    try {
+      const api = await extract({
+        pdf,
+        outDir: apiDir,
+        provider: "fake",
+        fake: () => {
+          calls += 1;
+          throw new APIError(
+            400,
+            { error: { type: "api_error", message: "invoice SYN-1001 leaked" } },
+            "invoice SYN-1001 leaked",
+            new Headers(),
+            "api_error",
+          );
+        },
+      });
+      expect(calls).toBe(1);
+      expect(api.pages[0]?.record.reason).toBe("api_error 400");
+      expect(JSON.stringify(api.pages[0]?.record)).not.toContain("SYN-1001");
+    } finally {
+      fs.rmSync(apiDir, { recursive: true, force: true });
+    }
+
+    calls = 0;
+    const limitDir = tempDir();
+    try {
+      const limited = await extract({
+        pdf,
+        outDir: limitDir,
+        provider: "fake",
+        fake: () => {
+          calls += 1;
+          throw new RateLimitError(
+            429,
+            { error: { type: "rate_limit_error", message: "slow down SYN-1001" } },
+            "slow down SYN-1001",
+            new Headers(),
+          );
+        },
+      });
+      expect(calls).toBe(1);
+      expect(limited.pages[0]?.record.reason).toBe("rate_limit_error 429");
+      expect(JSON.stringify(limited.pages[0]?.record)).not.toContain("SYN-1001");
+    } finally {
+      fs.rmSync(limitDir, { recursive: true, force: true });
     }
 
     calls = 0;

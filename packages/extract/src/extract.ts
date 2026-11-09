@@ -1,8 +1,9 @@
+import { APIError } from "@anthropic-ai/sdk";
 import fs from "node:fs";
 import path from "node:path";
 import type { PageExtraction } from "dd-core";
 import { readAnthropicPage, type ModelResponse } from "./anthropic.js";
-import { addUsage, costUsd, emptyUsage, type Usage } from "./cost.js";
+import { addUsage, emptyUsage, priceUsage, type Usage } from "./cost.js";
 import { mapModelText } from "./map.js";
 import { splitPdf } from "./pdf.js";
 import { PROMPT_VERSION } from "./prompt.js";
@@ -30,7 +31,8 @@ export type PageRecord = {
   schema_version: string;
   latency_ms: number;
   usage: Usage;
-  cost_usd: string;
+  cost_usd: string | null;
+  cost_note?: string;
   inference_geo: string | null;
   attempts: number;
   reason?: string;
@@ -114,9 +116,9 @@ async function readPage(
         effort: input.effort,
         retry: attempt === 1 ? null : { previous: attempts[attempts.length - 1] ?? "", errors },
       });
-    } catch {
+    } catch (error) {
       latency += elapsed(started);
-      reason = "The model request failed.";
+      reason = transportReason(error);
       break;
     }
     latency += elapsed(started);
@@ -158,6 +160,7 @@ function recordOf(
   attempts: number,
   reason?: string,
 ): PageRecord {
+  const priced = priceUsage(input.model, usage);
   const record: PageRecord = {
     page: input.pageNumber,
     status,
@@ -167,12 +170,24 @@ function recordOf(
     schema_version: SCHEMA_VERSION,
     latency_ms: latency,
     usage,
-    cost_usd: costUsd(usage),
+    cost_usd: priced.cost_usd,
     inference_geo: inferenceGeo,
     attempts,
   };
+  if (priced.cost_note !== undefined) record.cost_note = priced.cost_note;
   if (reason !== undefined) record.reason = reason;
   return record;
+}
+
+/** SDK error type and HTTP status only. The response body is not recorded. */
+function transportReason(error: unknown): string {
+  if (error instanceof APIError) {
+    const type = error.type ?? error.name;
+    if (typeof error.status === "number") return `${type} ${error.status}`;
+    return type;
+  }
+  if (error instanceof Error && error.name !== "") return error.name;
+  return "request_failed";
 }
 
 function writePage(outDir: string, record: PageRecord, attempts: string[]): void {
