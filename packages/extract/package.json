@@ -7,5 +7,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.6.0",
+    "dd-core": "workspace:*",
+    "decimal.js": "10.6.0",
+    "pdf-lib": "1.17.1"
   }
 }
