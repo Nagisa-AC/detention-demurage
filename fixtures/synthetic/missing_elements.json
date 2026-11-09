@@ -1,0 +1,153 @@
+{
+  "id": "missing_elements",
+  "invoice_number": "SYN-1002",
+  "pages": 1,
+  "movement": "import",
+  "currency": "USD",
+  "billing_party": "Sample Line Logistics",
+  "billed_party": "Harbor Home Goods",
+  "reissue_of": null,
+  "elements": {
+    "bl_numbers": {
+      "state": "present",
+      "text": "SYN-BL-1002",
+      "page": 1
+    },
+    "container_numbers": {
+      "state": "present",
+      "text": "SLLU0000027",
+      "page": 1
+    },
+    "port_of_discharge": {
+      "state": "present",
+      "text": "Port Sample",
+      "page": 1
+    },
+    "billed_party_basis": {
+      "state": "present",
+      "text": "Harbor Home Goods is the shipper named on the bill of lading.",
+      "page": 1
+    },
+    "invoice_date": {
+      "state": "present",
+      "text": "2026-06-20",
+      "page": 1
+    },
+    "invoice_due_date": {
+      "state": "present",
+      "text": "2026-07-20",
+      "page": 1
+    },
+    "free_time_days": {
+      "state": "present",
+      "text": "5 days",
+      "page": 1
+    },
+    "free_time_start": {
+      "state": "suggested_absent",
+      "page": null
+    },
+    "free_time_end": {
+      "state": "suggested_absent",
+      "page": null,
+      "text": "2026-06-12"
+    },
+    "container_availability_date": {
+      "state": "present",
+      "text": "2026-06-08",
+      "page": 1
+    },
+    "earliest_return_date": {
+      "state": "not_applicable",
+      "page": null
+    },
+    "charged_dates": {
+      "state": "present",
+      "text": "2026-06-13 through 2026-06-15",
+      "page": 1
+    },
+    "total_due": {
+      "state": "present",
+      "text": "300.00 USD",
+      "page": 1
+    },
+    "rate_basis": {
+      "state": "present",
+      "text": "Sample Line Logistics demurrage schedule SL-1",
+      "page": 1
+    },
+    "rate": {
+      "state": "present",
+      "text": "100.00 USD per day",
+      "page": 1
+    },
+    "dispute_contact": {
+      "state": "present",
+      "text": "disputes@sample-line.example",
+      "page": 1
+    },
+    "dispute_instructions_url": {
+      "state": "present",
+      "text": "https://example.com/sample-line/mitigation",
+      "page": 1
+    },
+    "dispute_timeframes": {
+      "state": "present",
+      "text": "Request a waiver within 30 days. Sample Line Logistics resolves the request within 30 days.",
+      "page": 1
+    },
+    "certification_rules": {
+      "state": "suggested_absent",
+      "page": null,
+      "text": "The charges are consistent with the Federal Maritime Commission's demurrage and detention rules."
+    },
+    "certification_performance": {
+      "state": "suggested_absent",
+      "page": null,
+      "text": "The billing party's performance did not cause or contribute to these charges."
+    }
+  },
+  "charge_lines": [
+    {
+      "container": "SLLU0000027",
+      "charge": "demurrage",
+      "charged_from": "2026-06-13",
+      "charged_to": "2026-06-15",
+      "days": "3",
+      "rate": "100.00",
+      "amount": "300.00",
+      "placement": {
+        "kind": "row",
+        "page": 1
+      }
+    }
+  ],
+  "total_due": "300.00",
+  "expected_findings": [],
+  "review_cases": {
+    "before_review": {
+      "rule": "R1",
+      "outcome": "not_evaluable"
+    },
+    "after_review": {
+      "confirmed_absent": [
+        "free_time_start",
+        "free_time_end",
+        "certification_rules",
+        "certification_performance"
+      ],
+      "finding": {
+        "rule": "R1",
+        "ground": "missing_information",
+        "citations": [
+          "46 CFR 541.6(b)(4)",
+          "46 CFR 541.6(b)(5)",
+          "46 CFR 541.6(e)(1)",
+          "46 CFR 541.6(e)(2)"
+        ],
+        "disputable_amount": "300.00",
+        "currency": "USD"
+      }
+    }
+  }
+}
