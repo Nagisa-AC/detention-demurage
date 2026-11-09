@@ -38,10 +38,12 @@ const moneyText = /^\d+\.\d{2}$/;
 const none = { outcome: "none" } as const;
 
 /**
- * R4. A line amount has to equal the inclusive day count times the rate.
- * The printed total has to equal the sum of the printed line amounts.
+ * R4. Report an overcharge only.
+ * A line finding exists when the printed amount is greater than the inclusive day count times the rate.
+ * A total finding exists when the printed total is greater than the sum of the printed line amounts.
+ * An underbilled line, and a total below that sum, are silent. Netting the two is runRules' open item.
  * A wrong day count with a matching amount is silent: there is nothing to recover.
- * R3 can dispute the same printed dollars. runRules owns that overlap.
+ * R3 can dispute the same printed dollars. runRules owns that overlap too.
  */
 export function arithmetic(invoice: ArithmeticInvoice): ArithmeticResult {
   const facts = readFacts(invoice);
@@ -158,8 +160,8 @@ function readLines(invoice: ArithmeticInvoice): ReadyLine[] | null {
 /** `undefined` is a clean line. `null` means the money could not be recorded. */
 function lineFinding(invoice: ArithmeticInvoice, citation: string, line: ReadyLine): Finding | null | undefined {
   const product = times(line.rate, line.span);
-  if (product.equals(line.amount)) return undefined;
-  const disputable = product.minus(line.amount).abs().toFixed(2);
+  if (!line.amount.greaterThan(product)) return undefined;
+  const disputable = line.amount.minus(product).toFixed(2);
   const productText = money(product);
   const amountText = money(line.amount);
   const rateText = money(line.rate);
@@ -195,10 +197,10 @@ function totalCheck(invoice: ArithmeticInvoice, facts: Facts): Finding | null | 
   if (total === null) return undefined;
   let sum = new Decimal("0");
   for (const line of facts.lines) sum = sum.plus(line.amount);
-  if (sum.equals(total.amount)) return undefined;
+  if (!total.amount.greaterThan(sum)) return undefined;
   const sumText = money(sum);
   const totalText = money(total.amount);
-  const disputable = sum.minus(total.amount).abs().toFixed(2);
+  const disputable = total.amount.minus(sum).toFixed(2);
   if (sumText === null || totalText === null || !moneyText.test(disputable)) return null;
   return findingSchema.parse({
     rule: "R4",

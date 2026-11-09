@@ -116,17 +116,13 @@ describe("arithmetic", () => {
     });
   });
 
-  it("uses the absolute difference when a line is under its product", () => {
-    const invoice = mapLines(preparedInvoice("arithmetic"), (line, index) =>
-      index === 0 ? { ...line, amount: "1000.00" } : line,
-    );
-    expect(arithmetic(invoice)).toMatchObject({
-      outcome: "finding",
-      findings: [
-        { line_ids: ["ln_1"], disputable_amount: "500.00", actual: "printed 6 days, 1000.00 USD" },
-        { line_ids: ["ln_1", "ln_2"], disputable_amount: "1000.00", expected: "2450.00 USD" },
-      ],
-    });
+  it("is silent when a line is under the span times the rate", () => {
+    const under = mapLines(preparedInvoice("clean"), (line) => ({ ...line, amount: "300.00" }));
+    expect(arithmetic(withTotal(under, "300.00 USD"))).toEqual({ outcome: "none" });
+  });
+
+  it("is silent when the printed total is under the line sum", () => {
+    expect(arithmetic(withTotal(preparedInvoice("clean"), "400.00 USD"))).toEqual({ outcome: "none" });
   });
 
   it("is not evaluable for an unresolved fragment, another currency, or an unreadable element", () => {
@@ -205,6 +201,12 @@ function preparedInvoice(id: string): ArithmeticInvoice {
 
 function mapLines(invoice: ArithmeticInvoice, edit: (line: ArithmeticLine, index: number) => ArithmeticLine): ArithmeticInvoice {
   return { ...invoice, lines: invoice.lines.map(edit) };
+}
+
+function withTotal(invoice: ArithmeticInvoice, text: string): ArithmeticInvoice {
+  const current = invoice.elements.total_due;
+  if (current.state !== "present") throw new Error("total_due is present");
+  return { ...invoice, elements: { ...invoice.elements, total_due: { ...current, text } } };
 }
 
 function toLines(invoice: StitchedInvoice): ArithmeticLine[] {
