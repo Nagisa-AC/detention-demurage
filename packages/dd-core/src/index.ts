@@ -17,6 +17,9 @@ export type { Applicability, ElementEntry, ElementKey } from "./elements.js";
 export { assignPresence, forRules } from "./presence.js";
 export type { Movement, RuleElement } from "./presence.js";
 
+export { requiredElements } from "./rules/requiredElements.js";
+export type { RequiredElementsResult, RuleInvoice } from "./rules/requiredElements.js";
+
 export { carryDecisions, isConfirmedAbsent, loadReview, startReview, ReviewError, ReviewSession, savedDecisionSchema } from "./review.js";
 export type { ConfirmedAbsent, ReviewResult, ReviewedElement, SavedDecision } from "./review.js";
 

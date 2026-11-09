@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ELEMENT_KEYS } from "./elements.js";
 import { forRules, assignPresence, type RuleElement } from "./presence.js";
-import { isConfirmedAbsent, type ConfirmedAbsent } from "./review.js";
+import { isConfirmedAbsent, startReview, type ConfirmedAbsent } from "./review.js";
 import {
   elementValueSchema,
   fixtureTruthSchema,
@@ -132,6 +132,30 @@ describe("assignPresence", () => {
 
     const present = forRules({ state: "present", text: "2026-06-20", value: "2026-06-20", page: 1 });
     expect(present).toEqual({ state: "present", text: "2026-06-20", value: "2026-06-20", page: 1 });
+  });
+
+  it("passes a branded confirmed absence through and rejects a forgery", () => {
+    const invoice = stitchedInvoiceSchema.parse({
+      elements: {},
+      conflicts: [],
+      header_conflicts: [],
+      charge_lines: [],
+      unresolved: [],
+    });
+    const session = startReview({
+      documentHash: "hash-rules",
+      invoice,
+      elements: assignPresence(invoice, "import"),
+      pages: 1,
+      name: "Reviewer",
+      at: "2026-11-09T21:13:00Z",
+    });
+    session.acknowledge(1);
+    session.confirmAbsent("free_time_start");
+    const branded = session.view().elements.free_time_start;
+    expect(forRules(branded)).toBe(branded);
+    expect(isConfirmedAbsent(forRules(branded))).toBe(true);
+    expect(() => forRules({ state: "confirmed_absent", page: null } as never)).toThrow("not a rule input");
   });
 });
 
