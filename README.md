@@ -14,3 +14,5 @@ pnpm test
 ```
 
 `make lint`, `make typecheck`, and `make test` run the same three checks.
+
+`pnpm fixtures:render` writes the synthetic PDFs. `pnpm fixtures:check` re-renders them and diffs the extracted text. The check needs Chromium once: `pnpm exec playwright install chromium`.
