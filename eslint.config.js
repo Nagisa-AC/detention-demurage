@@ -57,4 +57,36 @@ export default defineConfig(
       "@typescript-eslint/no-require-imports": "error",
     },
   },
+  {
+    files: [
+      "packages/dd-core/src/normalize/money.ts",
+      "packages/dd-core/eslint-fixtures/money-float.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportExpression",
+          message: "dd-core must not use dynamic import.",
+        },
+        {
+          selector: "Literal[raw=/^(?:\\d+\\.\\d*|\\.\\d+)/]",
+          message: "money.ts must not use a float.",
+        },
+        {
+          selector: "CallExpression[callee.name='parseFloat']",
+          message: "money.ts must not use a float.",
+        },
+        {
+          selector: "CallExpression[callee.name='Number']",
+          message: "money.ts must not use a float.",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='Number'][callee.property.name='parseFloat']",
+          message: "money.ts must not use a float.",
+        },
+      ],
+    },
+  },
 );

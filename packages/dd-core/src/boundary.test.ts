@@ -76,6 +76,7 @@ describe("dd-core extract boundary", () => {
       "packages/dd-core/eslint-fixtures/imports-extract.ts",
       "packages/dd-core/eslint-fixtures/imports-extract-relative.ts",
       "packages/dd-core/eslint-fixtures/dynamic-import.ts",
+      "packages/dd-core/eslint-fixtures/money-float.ts",
     ];
 
     for (const fixture of fixtures) {
