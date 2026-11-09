@@ -118,6 +118,8 @@ const elementRecordShape = Object.fromEntries(
 
 export const elementRecordSchema = z.strictObject(elementRecordShape);
 
+export type ElementRecord = z.infer<typeof elementRecordSchema>;
+
 /**
  * Normalized charge line. `id` is assigned at stitch and is never printed.
  * Dates are ISO. `days` is an integer. Money is a two-decimal string.

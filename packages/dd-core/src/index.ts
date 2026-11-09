@@ -14,6 +14,12 @@ export type { Money, MoneyHint } from "./normalize/money.js";
 export { ELEMENT_KEYS, ELEMENTS } from "./elements.js";
 export type { Applicability, ElementEntry, ElementKey } from "./elements.js";
 
+export { assignPresence, forRules } from "./presence.js";
+export type { Movement, RuleElement } from "./presence.js";
+
+export { isConfirmedAbsent } from "./review.js";
+export type { ConfirmedAbsent } from "./review.js";
+
 export { StitchError, stitch } from "./stitch.js";
 
 export {
@@ -38,6 +44,7 @@ export {
 export type {
   ChargeLine,
   ElementConflict,
+  ElementRecord,
   ElementValue,
   Finding,
   FixtureTruth,
