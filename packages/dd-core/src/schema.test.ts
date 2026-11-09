@@ -182,6 +182,9 @@ describe("schema", () => {
       ).success,
     ).toBe(true);
     expect(findingSchema.safeParse(finding({ rule: "R1", line_ids: [] })).success).toBe(true);
+    expect(findingSchema.parse(finding()).convention).toBeUndefined();
+    expect(findingSchema.parse(finding({ convention: "day1" })).convention).toBe("day1");
+    expect(findingSchema.safeParse({ ...finding(), convention: "day2" }).success).toBe(false);
     expect(
       findingSchema.parse(
         finding({

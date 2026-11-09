@@ -20,6 +20,9 @@ export type { Movement, RuleElement } from "./presence.js";
 export { requiredElements } from "./rules/requiredElements.js";
 export type { RequiredElementsResult, RuleInvoice } from "./rules/requiredElements.js";
 
+export { lateIssuance } from "./rules/lateIssuance.js";
+export type { LateConfig, LateInvoice, LateResult } from "./rules/lateIssuance.js";
+
 export { carryDecisions, isConfirmedAbsent, loadReview, startReview, ReviewError, ReviewSession, savedDecisionSchema } from "./review.js";
 export type { ConfirmedAbsent, ReviewResult, ReviewedElement, SavedDecision } from "./review.js";
 

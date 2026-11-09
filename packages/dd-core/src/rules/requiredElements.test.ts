@@ -166,6 +166,7 @@ describe("requiredElements", () => {
       { id: "ln_1", amount: "100.10 USD" },
       { id: "ln_2", amount: "50.20 EUR" },
     ]))).toEqual({ outcome: "not_evaluable" });
+    expect(requiredElements(ruleInvoice(reviewed, []))).toEqual({ outcome: "not_evaluable" });
   });
 
   it("returns none when every applicable element is present", () => {

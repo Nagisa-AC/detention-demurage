@@ -82,6 +82,7 @@ function printedTotal(value: string | undefined): string | null {
 }
 
 function sumLines(lines: readonly { amount: string }[], currency: string): string | null {
+  if (lines.length === 0) return null;
   let sum = new Decimal("0");
   for (const line of lines) {
     const parsed = parseMoney(line.amount);

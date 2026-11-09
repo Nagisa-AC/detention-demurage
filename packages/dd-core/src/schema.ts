@@ -168,6 +168,7 @@ export const findingSchema = z.strictObject({
     )
     .min(1),
   explain: z.string().min(1),
+  convention: z.enum(["day0", "day1"]).exactOptional(),
 });
 
 export type Finding = z.infer<typeof findingSchema>;
