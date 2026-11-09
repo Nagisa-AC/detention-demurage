@@ -6,6 +6,8 @@ export type { ConfigProblem, CustomerConfig } from "./config.js";
 export { addDays, dayCount, isUnreadable, parseDate, unreadable } from "./normalize/dates.js";
 export type { DayConvention, FormatHint, Unreadable } from "./normalize/dates.js";
 
+export { parseContainer } from "./normalize/container.js";
+
 export { parseMoney } from "./normalize/money.js";
 export type { Money, MoneyHint } from "./normalize/money.js";
 
