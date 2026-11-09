@@ -179,6 +179,94 @@ const placementSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+const textPageSchema = z.strictObject({
+  text: z.string().min(1),
+  page: z.int().positive(),
+});
+
+const stitchedElementSchema = z.strictObject({
+  text: z.string().min(1),
+  page: z.int().positive(),
+  region: regionSchema.exactOptional(),
+});
+
+export const elementConflictSchema = z.strictObject({
+  key: elementKeySchema,
+  values: z.array(textPageSchema).min(2),
+});
+
+export type ElementConflict = z.infer<typeof elementConflictSchema>;
+
+export const headerConflictSchema = z.strictObject({
+  field: z.enum(["invoice_number", "billing_party", "billed_party", "currency"]),
+  values: z.array(textPageSchema).min(2),
+});
+
+export type HeaderConflict = z.infer<typeof headerConflictSchema>;
+
+const pagedTextSchema = textPageSchema;
+
+export const stitchedChargeLineSchema = z.strictObject({
+  id: z.string().min(1),
+  container: pagedTextSchema,
+  charge: pagedTextSchema.exactOptional(),
+  charged_from: pagedTextSchema.exactOptional(),
+  charged_to: pagedTextSchema.exactOptional(),
+  days: pagedTextSchema.exactOptional(),
+  rate: pagedTextSchema.exactOptional(),
+  amount: pagedTextSchema,
+  placement: placementSchema,
+});
+
+export type StitchedChargeLine = z.infer<typeof stitchedChargeLineSchema>;
+
+const unresolvedFields = {
+  container: z.string().min(1).exactOptional(),
+  charge: z.string().min(1).exactOptional(),
+  charged_from: z.string().min(1).exactOptional(),
+  charged_to: z.string().min(1).exactOptional(),
+  days: z.string().min(1).exactOptional(),
+  rate: z.string().min(1).exactOptional(),
+  amount: z.string().min(1).exactOptional(),
+};
+
+export const unresolvedFragmentSchema = z
+  .strictObject({
+    kind: z.enum(["open_head", "orphan_tail"]),
+    page: z.int().positive(),
+    ...unresolvedFields,
+  })
+  .superRefine((fragment, ctx) => {
+    if (fragment.kind === "open_head") {
+      if (fragment.container === undefined) {
+        ctx.addIssue({ code: "custom", message: "An open head has a container.", path: ["container"] });
+      }
+      if (fragment.amount !== undefined) {
+        ctx.addIssue({ code: "custom", message: "An open head has no amount.", path: ["amount"] });
+      }
+    }
+    if (fragment.kind === "orphan_tail" && fragment.container !== undefined) {
+      ctx.addIssue({ code: "custom", message: "An orphan tail has no container.", path: ["container"] });
+    }
+  });
+
+export type UnresolvedFragment = z.infer<typeof unresolvedFragmentSchema>;
+
+/** One invoice after stitching. Charge lines are still printed text. Parsing is later. */
+export const stitchedInvoiceSchema = z.strictObject({
+  invoice_number: textPageSchema.exactOptional(),
+  billing_party: textPageSchema.exactOptional(),
+  billed_party: textPageSchema.exactOptional(),
+  currency: textPageSchema.exactOptional(),
+  elements: z.partialRecord(elementKeySchema, stitchedElementSchema),
+  conflicts: z.array(elementConflictSchema),
+  header_conflicts: z.array(headerConflictSchema),
+  charge_lines: z.array(stitchedChargeLineSchema),
+  unresolved: z.array(unresolvedFragmentSchema),
+});
+
+export type StitchedInvoice = z.infer<typeof stitchedInvoiceSchema>;
+
 const fixtureChargeLineSchema = z.strictObject({
   container: z.string(),
   charge: z.string(),

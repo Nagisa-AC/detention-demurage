@@ -138,6 +138,19 @@
     {
       "container": "SLLU0000074",
       "charge": "demurrage",
+      "charged_from": "2026-05-16",
+      "charged_to": "2026-05-17",
+      "days": "2",
+      "rate": "100.00",
+      "amount": "200.00",
+      "placement": {
+        "kind": "row",
+        "page": 2
+      }
+    },
+    {
+      "container": "SLLU0000074",
+      "charge": "demurrage",
       "charged_from": "2026-05-13",
       "charged_to": "2026-05-15",
       "days": "3",
@@ -147,19 +160,6 @@
         "kind": "split",
         "head_page": 2,
         "tail_page": 3
-      }
-    },
-    {
-      "container": "SLLU0000074",
-      "charge": "demurrage",
-      "charged_from": "2026-05-16",
-      "charged_to": "2026-05-17",
-      "days": "2",
-      "rate": "100.00",
-      "amount": "200.00",
-      "placement": {
-        "kind": "row",
-        "page": 2
       }
     }
   ],
