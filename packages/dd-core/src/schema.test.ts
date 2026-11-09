@@ -9,6 +9,7 @@ import {
   findingSchema,
   fixtureTruthSchema,
   invoiceExtractionSchema,
+  printedChargeLineSchema,
   printedElementSchema,
   type Finding,
 } from "./schema.js";
@@ -80,40 +81,70 @@ describe("schema", () => {
     expect(fixtureTruthSchema.safeParse({ ...clean, extra: true }).success).toBe(false);
   });
 
-  it("keeps printed extraction as strings and keeps presence states off it", () => {
-    const printed = invoiceExtractionSchema.parse({
-      invoice_number: "SYN-1001",
-      billing_party: "Sample Line Logistics",
-      billed_party: "Harbor Home Goods",
-      currency: "USD",
-      elements: {
-        invoice_date: { text: "January 20, 2026", page: 1 },
-        rates: { text: "150.00 USD per day", page: 1, region: { x: 0, y: 0.4, w: 1, h: 0.05 } },
-      },
-      charge_lines: [
-        {
-          container: "SLLU0000011",
-          charge: "demurrage",
-          charged_from: "10 Jan 2026",
-          charged_to: "12 Jan 2026",
-          days: "3",
-          rate: "$150.00",
-          amount: "$450.00",
-        },
-      ],
+  it("reads one printed page at a time, including a split tail that is only an amount", () => {
+    expect(printedChargeLineSchema.parse({ page: 3, amount: "300.00" })).toEqual({
+      page: 3,
+      amount: "300.00",
     });
-    expect(printed.charge_lines[0]?.days).toBe("3");
+    const printed = invoiceExtractionSchema.parse([
+      {
+        page: 1,
+        invoice_number: "SYN-1001",
+        billing_party: "Sample Line Logistics",
+        billed_party: "Harbor Home Goods",
+        currency: "USD",
+        elements: {
+          invoice_date: { text: "January 20, 2026", page: 1 },
+          rates: { text: "150.00 USD per day", page: 1, region: { x: 0, y: 0.4, w: 1, h: 0.05 } },
+        },
+        charge_lines: [
+          {
+            page: 1,
+            container: "SLLU0000011",
+            charge: "demurrage",
+            charged_from: "10 Jan 2026",
+            charged_to: "12 Jan 2026",
+            days: "3",
+            rate: "$150.00",
+            amount: "$450.00",
+          },
+        ],
+      },
+      {
+        page: 3,
+        elements: {},
+        charge_lines: [{ page: 3, amount: "300.00" }],
+      },
+    ]);
+    expect(printed).toHaveLength(2);
+    expect(printed[0]?.charge_lines[0]?.days).toBe("3");
+    expect(printed[1]?.charge_lines[0]?.amount).toBe("300.00");
     expect(
-      invoiceExtractionSchema.safeParse({
-        elements: { invoice_date: { text: "2026-01-20", page: 1, state: "present" } },
-        charge_lines: [],
-      }).success,
+      invoiceExtractionSchema.safeParse([
+        {
+          page: 1,
+          elements: { invoice_date: { text: "2026-01-20", page: 1, state: "present" } },
+          charge_lines: [],
+        },
+      ]).success,
     ).toBe(false);
     expect(
-      invoiceExtractionSchema.safeParse({
-        elements: {},
-        charge_lines: [{ ...printed.charge_lines[0], id: "ln_1" }],
-      }).success,
+      invoiceExtractionSchema.safeParse([
+        {
+          page: 1,
+          elements: {},
+          charge_lines: [{ page: 1, amount: "450.00", id: "ln_1" }],
+        },
+      ]).success,
+    ).toBe(false);
+    expect(
+      invoiceExtractionSchema.safeParse([
+        {
+          page: 1,
+          elements: {},
+          charge_lines: [{ page: 3, amount: "300.00" }],
+        },
+      ]).success,
     ).toBe(false);
   });
 
@@ -151,6 +182,16 @@ describe("schema", () => {
       ).success,
     ).toBe(true);
     expect(findingSchema.safeParse(finding({ rule: "R1", line_ids: [] })).success).toBe(true);
+    expect(
+      findingSchema.parse(
+        finding({
+          rule: "R1",
+          ground: "missing_information",
+          line_ids: [],
+          evidence: [{ page: null, field: "free_time_start" }],
+        }),
+      ).evidence,
+    ).toEqual([{ page: null, field: "free_time_start" }]);
   });
 
   it("keeps region inside the page and confirmed_absent out of the state enum", () => {

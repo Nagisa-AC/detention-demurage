@@ -49,26 +49,56 @@ export const printedElementSchema = z.strictObject({
 
 export type PrintedElement = z.infer<typeof printedElementSchema>;
 
+/** One fragment of a charge row as printed on a single page. A split tail may be only an amount. */
 export const printedChargeLineSchema = z.strictObject({
-  container: z.string(),
-  charge: z.string(),
-  charged_from: z.string(),
-  charged_to: z.string(),
-  days: z.string(),
-  rate: z.string(),
-  amount: z.string(),
+  page: z.int().positive(),
+  container: z.string().exactOptional(),
+  charge: z.string().exactOptional(),
+  charged_from: z.string().exactOptional(),
+  charged_to: z.string().exactOptional(),
+  days: z.string().exactOptional(),
+  rate: z.string().exactOptional(),
+  amount: z.string().exactOptional(),
 });
 
 export type PrintedChargeLine = z.infer<typeof printedChargeLineSchema>;
 
-export const invoiceExtractionSchema = z.strictObject({
-  invoice_number: z.string().exactOptional(),
-  billing_party: z.string().exactOptional(),
-  billed_party: z.string().exactOptional(),
-  currency: currency.exactOptional(),
-  elements: z.partialRecord(elementKeySchema, printedElementSchema),
-  charge_lines: z.array(printedChargeLineSchema),
-});
+/** One model call. Elements and charge lines on this page only. */
+export const pageExtractionSchema = z
+  .strictObject({
+    page: z.int().positive(),
+    invoice_number: z.string().exactOptional(),
+    billing_party: z.string().exactOptional(),
+    billed_party: z.string().exactOptional(),
+    currency: currency.exactOptional(),
+    elements: z.partialRecord(elementKeySchema, printedElementSchema),
+    charge_lines: z.array(printedChargeLineSchema),
+  })
+  .superRefine((extraction, ctx) => {
+    for (const [key, element] of Object.entries(extraction.elements)) {
+      if (element !== undefined && element.page !== extraction.page) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Element is from another page.",
+          path: ["elements", key, "page"],
+        });
+      }
+    }
+    extraction.charge_lines.forEach((line, index) => {
+      if (line.page !== extraction.page) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Charge line is from another page.",
+          path: ["charge_lines", index, "page"],
+        });
+      }
+    });
+  });
+
+export type PageExtraction = z.infer<typeof pageExtractionSchema>;
+
+/** The model's output: one extraction per page. Stitching into one invoice is M1.10. */
+export const invoiceExtractionSchema = z.array(pageExtractionSchema);
 
 export type InvoiceExtraction = z.infer<typeof invoiceExtractionSchema>;
 
@@ -152,7 +182,7 @@ export const findingSchema = z.strictObject({
   evidence: z
     .array(
       z.strictObject({
-        page: z.int().positive(),
+        page: z.int().positive().nullable(),
         field: evidenceFieldSchema,
       }),
     )
@@ -171,7 +201,14 @@ const placementSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const fixtureChargeLineSchema = printedChargeLineSchema.extend({
+const fixtureChargeLineSchema = z.strictObject({
+  container: z.string(),
+  charge: z.string(),
+  charged_from: z.string(),
+  charged_to: z.string(),
+  days: z.string(),
+  rate: z.string(),
+  amount: z.string(),
   placement: placementSchema,
 });
 
