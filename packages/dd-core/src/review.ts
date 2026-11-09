@@ -4,7 +4,7 @@ import type { Region } from "./schema.js";
  * Only this file can set the brand. A ConfirmedAbsent value requires it,
  * so an object literal in any other module does not typecheck.
  */
-declare const confirmedAbsentBrand: unique symbol;
+const confirmedAbsentBrand: unique symbol = Symbol("confirmedAbsent");
 
 export type ConfirmedAbsent = {
   readonly [confirmedAbsentBrand]: true;

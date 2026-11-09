@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ELEMENT_KEYS } from "./elements.js";
 import { forRules, assignPresence, type RuleElement } from "./presence.js";
-import type { ConfirmedAbsent } from "./review.js";
+import { isConfirmedAbsent, type ConfirmedAbsent } from "./review.js";
 import {
   elementValueSchema,
   fixtureTruthSchema,
@@ -138,6 +138,11 @@ describe("assignPresence", () => {
 describe("confirmed_absent", () => {
   it("rejects the state in the element schema", () => {
     expect(elementValueSchema.safeParse({ state: "confirmed_absent", page: null }).success).toBe(false);
+  });
+
+  it("returns false for a plain object and a forged state", () => {
+    expect(isConfirmedAbsent({ state: "x" })).toBe(false);
+    expect(isConfirmedAbsent({ state: "confirmed_absent" })).toBe(false);
   });
 
   it("does not assign that state outside review.ts", () => {
