@@ -1,0 +1,26 @@
+id: harbor_home
+name: Harbor Home Goods
+fee_pct: "0.25"
+billed_party_role: direct
+nvocc: null
+authorization:
+  document: auth_2027-01-10.pdf
+  signed_on: 2027-01-10
+  valid_until: 2028-01-10
+  covers: [sample_line, cobalt_line, northbay_line]
+billing_parties:
+  pursue: [sample_line, cobalt_line]
+  do_not_pursue: [northbay_line]
+store_contract_terms: true
+contract_terms:
+  - billing_party: sample_line
+    service_contract: "SC-SYNTH-001"
+    valid_from: 2026-02-01
+    valid_to: 2026-02-28
+    demurrage: {free_days: 5, day_basis: calendar}
+    detention: {free_days: 7, day_basis: calendar}
+    rates:
+      - {charge: demurrage, from_day: 1, to_day: 4, per_day: "150.00", currency: USD}
+      - {charge: demurrage, from_day: 4, to_day: 6, per_day: "250.00", currency: USD}
+lookback_from: 2022-06-16
+retention_days_after_close: 730

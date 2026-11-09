@@ -1,0 +1,27 @@
+id: harbor_home
+name: Harbor Home Goods # synthetic
+fee_pct: "0.25" # founding tier; decimal string, never a float
+billed_party_role: direct # direct | nvocc_passthrough
+nvocc: null # name when charges pass through an NVOCC
+authorization:
+  document: auth_2027-01-10.pdf # signed letter, stored in DD_DATA_DIR
+  signed_on: 2027-01-10
+  valid_until: 2028-01-10
+  covers: [sample_line, cobalt_line, northbay_line]
+billing_parties: # the customer's choice, recorded
+  pursue: [sample_line, cobalt_line]
+  do_not_pursue: [northbay_line] # renegotiating; never opens a case
+store_contract_terms: true # written consent to keep contract terms
+contract_terms:
+  - billing_party: sample_line
+    service_contract: "SC-SYNTH-001"
+    # February 2026 only. Wider dates would make R3 (M1.15) fire on fixtures other than free_time_overbill.
+    valid_from: 2026-02-01
+    valid_to: 2026-02-28
+    demurrage: {free_days: 5, day_basis: calendar}
+    detention: {free_days: 7, day_basis: calendar}
+    rates:
+      - {charge: demurrage, from_day: 1, to_day: 4, per_day: "150.00", currency: USD}
+      - {charge: demurrage, from_day: 5, per_day: "250.00", currency: USD}
+lookback_from: 2022-06-16 # earliest assessed date in scope
+retention_days_after_close: 730 # proposed default; attorney to confirm
