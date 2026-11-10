@@ -1,21 +1,23 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { Readable } from "node:stream";
 import {
   ELEMENT_KEYS,
-  elementRecordSchema,
   ReviewError,
   savedDecisionSchema,
   startReview,
-  stitchedInvoiceSchema,
   type ElementKey,
   type ReviewSession,
 } from "dd-core";
+import { CliError } from "./cli-error.js";
+import { blobPath, documentDir, flagsOf, loadConfig, requireRun, sha256, writeJson } from "./layout.js";
+import { requireHash, requireLabel } from "./paths.js";
+import { readPrepared } from "./prepared.js";
 
 export type ReviewIo = {
   argv: readonly string[];
+  env?: NodeJS.ProcessEnv;
   stdin: Readable;
   stdout: { write(chunk: string): void };
   stderr: { write(chunk: string): void };
@@ -24,10 +26,11 @@ export type ReviewIo = {
 
 export async function runReview(io: ReviewIo): Promise<number> {
   try {
+    if (!io.argv.includes("--pdf")) return await runCustomerReview(io);
     const args = parseArgs(io.argv);
-    const file = readInvoiceFile(args.invoicePath);
+    const file = readPrepared(args.invoicePath, "The invoice file");
     const pdf = fs.readFileSync(args.pdfPath);
-    const documentHash = createHash("sha256").update(pdf).digest("hex");
+    const documentHash = sha256(pdf);
     const prior = args.decisionsPath === undefined ? [] : readDecisions(args.decisionsPath);
     io.opener(args.pdfPath);
     const session = startReview({
@@ -40,62 +43,89 @@ export async function runReview(io: ReviewIo): Promise<number> {
       ...(args.dateHint === undefined ? {} : { dateHint: args.dateHint }),
       priorDecisions: prior,
     });
-    const lines = readline.createInterface({ input: io.stdin, crlfDelay: Infinity });
-    try {
-      const read = lines[Symbol.asyncIterator]();
-      for (let page = 1; page <= file.pages; page += 1) {
-        io.stdout.write(`page ${page} of ${file.pages}\n`);
-        const answer = await read.next();
-        if (answer.done === true) {
-          io.stderr.write("The review did not finish.\n");
-          return 1;
-        }
-        session.acknowledge(page);
-      }
-      listOpen(io, session);
-      for (;;) {
-        const answer = await read.next();
-        if (answer.done === true) {
-          io.stderr.write("The review did not finish.\n");
-          return 1;
-        }
-        const command = String(answer.value).trim();
-        if (command === "") continue;
-        if (command === "finish") {
-          const result = session.finish();
-          fs.mkdirSync(args.outDir, { recursive: true });
-          fs.writeFileSync(path.join(args.outDir, "review.json"), `${JSON.stringify(result, null, 2)}\n`);
-          return 0;
-        }
-        apply(session, command);
-      }
-    } finally {
-      lines.close();
-    }
+    return await conduct(io, session, file.pages, () => {
+      fs.mkdirSync(args.outDir, { recursive: true });
+      fs.writeFileSync(path.join(args.outDir, "review.json"), `${JSON.stringify(session.finish(), null, 2)}\n`);
+    });
   } catch (error) {
-    const message = error instanceof ReviewError || error instanceof Error ? error.message : "The review failed.";
+    const message = error instanceof ReviewError || error instanceof CliError || error instanceof Error ? error.message : "The review failed.";
     io.stderr.write(`${message}\n`);
     return 1;
   }
 }
 
-function readInvoiceFile(filePath: string): {
-  pages: number;
-  invoice: ReturnType<typeof stitchedInvoiceSchema.parse>;
-  elements: ReturnType<typeof elementRecordSchema.parse>;
-} {
-  const raw: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  if (typeof raw !== "object" || raw === null) throw new ReviewError("The invoice file is not an object.");
-  const record = raw as Record<string, unknown>;
-  if (record.movement !== "import" && record.movement !== "export") throw new ReviewError("The movement is import or export.");
-  if (typeof record.pages !== "number" || !Number.isInteger(record.pages) || record.pages < 1) {
-    throw new ReviewError("The invoice file needs a page count.");
+async function runCustomerReview(io: ReviewIo): Promise<number> {
+  const env = io.env ?? process.env;
+  const { positional, flags } = flagsOf(io.argv);
+  requireLabel(positional[0], "customer");
+  requireLabel(flags.get("--run"), "run id");
+  const hash = requireHash(flags.get("--document"), "document hash");
+  const { root, run, customer } = requireRun(io.argv, env);
+  loadConfig(root, customer);
+  const name = flags.get("--name");
+  const now = flags.get("--now");
+  if (name === undefined || name === "" || now === undefined || now === "") {
+    throw new ReviewError("Usage: dd review <customer> --run <id> --document <sha256> --name <name> --now <iso>");
   }
-  return {
-    pages: record.pages,
-    invoice: stitchedInvoiceSchema.parse(record.invoice),
-    elements: elementRecordSchema.parse(record.elements),
-  };
+  const hint = flags.get("--date-hint");
+  if (hint !== undefined && hint !== "DMY" && hint !== "MDY") throw new ReviewError("The date hint is DMY or MDY.");
+  const dir = documentDir(root, run, hash);
+  const preparedPath = path.join(dir, "prepared.json");
+  const prepared = readPrepared(preparedPath);
+  const blob = blobPath(root, hash);
+  if (!fs.existsSync(blob)) throw new CliError(`run ${run} document ${hash} was not ingested.`);
+  const pdf = fs.readFileSync(blob);
+  if (sha256(pdf) !== hash) throw new CliError(`run ${run} document ${hash} does not match its bytes.`);
+  const decisions = flags.get("--decisions");
+  const prior = decisions === undefined ? [] : readDecisions(decisions);
+  io.opener(blob);
+  const session = startReview({
+    documentHash: hash,
+    invoice: prepared.invoice,
+    elements: prepared.elements,
+    pages: prepared.pages,
+    name,
+    at: now,
+    ...(hint === "DMY" || hint === "MDY" ? { dateHint: hint } : {}),
+    priorDecisions: prior,
+  });
+  return conduct(io, session, prepared.pages, () => {
+    writeJson(path.join(dir, "review.json"), session.finish());
+    fs.writeFileSync(path.join(dir, "review.stamp"), `${sha256(fs.readFileSync(preparedPath))}\n`);
+  });
+}
+
+async function conduct(io: ReviewIo, session: ReviewSession, pages: number, finish: () => void): Promise<number> {
+  const lines = readline.createInterface({ input: io.stdin, crlfDelay: Infinity });
+  try {
+    const read = lines[Symbol.asyncIterator]();
+    for (let page = 1; page <= pages; page += 1) {
+      io.stdout.write(`page ${page} of ${pages}\n`);
+      const answer = await read.next();
+      if (answer.done === true) {
+        io.stderr.write("The review did not finish.\n");
+        return 1;
+      }
+      session.acknowledge(page);
+    }
+    listOpen(io, session);
+    for (;;) {
+      const answer = await read.next();
+      if (answer.done === true) {
+        io.stderr.write("The review did not finish.\n");
+        return 1;
+      }
+      const command = String(answer.value).trim();
+      if (command === "") continue;
+      if (command === "finish") {
+        finish();
+        return 0;
+      }
+      apply(session, command);
+    }
+  } finally {
+    lines.close();
+  }
 }
 
 function readDecisions(filePath: string) {
