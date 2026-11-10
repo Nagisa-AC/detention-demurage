@@ -4,6 +4,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 const boundaryMessage = "dd-core must not import packages/extract.";
+const harnessMessage = "The eval harness does not import dd-extract.";
 
 export default defineConfig(
   {
@@ -85,6 +86,23 @@ export default defineConfig(
           selector:
             "CallExpression[callee.object.name='Number'][callee.property.name='parseFloat']",
           message: "money.ts must not use a float.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["evals/harness.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [{ name: "dd-extract", message: harnessMessage }],
+          patterns: [
+            {
+              group: ["dd-extract/*", "**/packages/extract", "**/packages/extract/**"],
+              message: harnessMessage,
+            },
+          ],
         },
       ],
     },
