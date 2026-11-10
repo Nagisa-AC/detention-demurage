@@ -9,6 +9,7 @@ const COLUMNS = [
   "disputable_amount",
   "currency",
   "do_not_pursue",
+  "superseded_by",
   "convention",
   "citations",
   "expected",
@@ -42,6 +43,7 @@ function columnValue(finding: ReportFinding, column: (typeof COLUMNS)[number]): 
   if (column === "disputable_amount") return finding.disputable_amount;
   if (column === "currency") return finding.currency;
   if (column === "do_not_pursue") return finding.do_not_pursue ? "true" : "false";
+  if (column === "superseded_by") return finding.superseded_by;
   if (column === "convention") return finding.convention ?? "";
   if (column === "citations") return finding.citations.join("|");
   if (column === "expected") return finding.expected;

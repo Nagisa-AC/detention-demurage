@@ -40,7 +40,11 @@ export type RunInvoice = {
 
 export type RuleName = Finding["rule"];
 
-export type ReportFinding = Finding & { do_not_pursue: boolean };
+export type ReportFinding = Finding & {
+  do_not_pursue: boolean;
+  /** Reissue invoice number when this finding's invoice was superseded. Empty otherwise. */
+  superseded_by: string;
+};
 
 export type RuleOutcome = {
   rule: "R1" | "R2" | "R3" | "R4" | "R5";
@@ -93,6 +97,7 @@ export function runRules(
   if (convention !== "day0" && convention !== "day1") throw new TypeError("convention must be day0 or day1");
 
   const refused = new Set(config.billing_parties.do_not_pursue);
+  const superseded = supersededBy(reissues);
   const repeated = repeatedNumbers(invoices);
   const duplicateResult = duplicates(
     invoices.map((invoice) => toDuplicate(invoice, parties[invoice.invoice_number] ?? "")),
@@ -112,7 +117,7 @@ export function runRules(
   const totals = new Map<string, Decimal>();
   for (const invoice of invoices) totals.set(invoice.currency, totals.get(invoice.currency) ?? zero);
   for (const invoice of invoices) {
-    if (isRefused(invoice.invoice_number, parties, refused)) continue;
+    if (isRefused(invoice.invoice_number, parties, refused) || superseded.has(invoice.invoice_number)) continue;
     const own = findings.filter((finding) => finding.invoice_id === invoice.invoice_number);
     const current = totals.get(invoice.currency) ?? zero;
     totals.set(invoice.currency, current.plus(counted(invoice, own)));
@@ -136,7 +141,9 @@ export function runRules(
   return present({
     convention,
     total_disputable: [...totals.entries()].map(([currency, amount]) => ({ currency, amount: amount.toFixed(2) })),
-    findings: findings.map((finding) => toReportFinding(finding, isRefused(finding.invoice_id, parties, refused))),
+    findings: findings.map((finding) =>
+      toReportFinding(finding, isRefused(finding.invoice_id, parties, refused), superseded.get(finding.invoice_id) ?? ""),
+    ),
     not_evaluable: notEvaluable,
     needs_info: needsInfo,
     invoices: reportInvoices,
@@ -399,7 +406,23 @@ function isRefused(invoiceId: string, parties: Readonly<Record<string, string>>,
   return party !== undefined && refused.has(party);
 }
 
-function toReportFinding(finding: Finding, doNotPursue: boolean): ReportFinding {
+/**
+ * An original named by a confirmed reissue link is superseded.
+ * Its findings stay on the report and stay out of the total.
+ * Whether a reissue cures an R1 finding is still open: that finding is kept and marked, like the others.
+ * Two reissues of one original label it with the first reissue number in sort order.
+ */
+function supersededBy(reissues: readonly ReissueLink[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const links = [...reissues].sort((left, right) => cmp(left.invoice_number, right.invoice_number) || cmp(left.reissue_of, right.reissue_of));
+  for (const link of links) {
+    if (link.invoice_number.trim() === "" || link.reissue_of.trim() === "" || link.invoice_number === link.reissue_of) continue;
+    if (!map.has(link.reissue_of)) map.set(link.reissue_of, link.invoice_number);
+  }
+  return map;
+}
+
+function toReportFinding(finding: Finding, doNotPursue: boolean, supersededByInvoice: string): ReportFinding {
   const report: ReportFinding = {
     rule: finding.rule,
     rule_version: finding.rule_version,
@@ -412,6 +435,7 @@ function toReportFinding(finding: Finding, doNotPursue: boolean): ReportFinding 
     disputable_amount: finding.disputable_amount,
     currency: finding.currency,
     do_not_pursue: doNotPursue,
+    superseded_by: supersededByInvoice,
     evidence: finding.evidence,
     explain: finding.explain,
   };

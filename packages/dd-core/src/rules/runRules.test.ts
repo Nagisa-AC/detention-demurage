@@ -250,6 +250,42 @@ describe("runRules", () => {
     expect(findingsCsv(report)).toContain("1100.00,USD,true,");
     expect(findingsCsv(report)).toContain("250.00,USD,false,");
   });
+
+  it("counts a reissued overbill once", () => {
+    const original = load("free_time_overbill").invoice;
+    const reissue = withNumber(original, "SYN-2004");
+    const report = runRules([original, reissue], harbor(), "day1", partyMap([original, reissue], "sample_line"), [
+      { invoice_number: "SYN-2004", reissue_of: "SYN-1004" },
+    ]);
+    const originals = report.findings.filter((finding) => finding.invoice_id === "SYN-1004");
+    const reissued = report.findings.filter((finding) => finding.invoice_id === "SYN-2004");
+    expect(originals.map((finding) => finding.disputable_amount)).toEqual(["500.00"]);
+    expect(originals.every((finding) => finding.superseded_by === "SYN-2004")).toBe(true);
+    expect(reissued.map((finding) => finding.disputable_amount)).toEqual(["500.00"]);
+    expect(reissued.every((finding) => finding.superseded_by === "")).toBe(true);
+    expect(report.total_disputable).toEqual([{ currency: "USD", amount: "500.00" }]);
+    expect(findingsCsv(report)).toContain("500.00,USD,false,SYN-2004,");
+    expect(findingsCsv(report)).toContain("500.00,USD,false,,");
+  });
+
+  it("lists a superseded arithmetic finding and leaves it out of the total", () => {
+    const original = load("arithmetic").invoice;
+    const first = original.lines[0];
+    const second = original.lines[1];
+    if (first === undefined || second === undefined) throw new Error("arithmetic has two lines");
+    const reissue = withNumber(
+      withLines(withElement(original, "total_due", "2950.00", "2950.00"), [{ ...first, amount: "1500.00" }, second]),
+      "SYN-2005",
+    );
+    const report = runRules([original, reissue], harbor(), "day1", partyMap([original, reissue], "sample_line"), [
+      { invoice_number: "SYN-2005", reissue_of: original.invoice_number },
+    ]);
+    expect(report.findings.map((finding) => ({ invoice_id: finding.invoice_id, amount: finding.disputable_amount, superseded_by: finding.superseded_by }))).toEqual([
+      { invoice_id: "SYN-1005", amount: "250.00", superseded_by: "SYN-2005" },
+      { invoice_id: "SYN-1005", amount: "250.00", superseded_by: "SYN-2005" },
+    ]);
+    expect(report.total_disputable).toEqual([{ currency: "USD", amount: "0.00" }]);
+  });
 });
 
 describe("findings report", () => {
@@ -277,7 +313,7 @@ describe("findings report", () => {
     expect(csv).toContain("\"'\rnote\"");
     expect(csv).toContain("\"'=a,b\"");
     expect(csv).toContain(",10.00,");
-    expect(csv.startsWith("invoice_id,rule,rule_version,ground,line_ids,disputable_amount,currency,do_not_pursue,convention,citations,expected,actual,explain,evidence\n")).toBe(true);
+    expect(csv.startsWith("invoice_id,rule,rule_version,ground,line_ids,disputable_amount,currency,do_not_pursue,superseded_by,convention,citations,expected,actual,explain,evidence\n")).toBe(true);
   });
 
   it("prefixes a citation taken from the invoice", () => {
@@ -419,6 +455,7 @@ function fake(amount: string, explain: string, extra?: Partial<Finding>): Report
     disputable_amount: amount,
     currency: "USD",
     do_not_pursue: false,
+    superseded_by: "",
     evidence: [{ page: 1, field: "amount" }],
     explain,
     ...extra,
