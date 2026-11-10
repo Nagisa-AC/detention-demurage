@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "dd-core": "workspace:*"
+    "dd-core": "workspace:*",
+    "dd-extract": "workspace:*"
   }
 }

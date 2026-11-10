@@ -33,6 +33,8 @@ export type RunLine = {
 export type RunInvoice = {
   invoice_number: string;
   currency: string;
+  /** Set by the CLI. The report covers every run, so each invoice names its run. */
+  run_id?: string;
   elements: Record<ElementKey, ElementValue | ConfirmedAbsent>;
   lines: readonly RunLine[];
   unresolved: readonly { page: number }[];
@@ -61,6 +63,8 @@ export type ReportElement = {
 
 export type ReportInvoice = {
   invoice_id: string;
+  /** The run that ingested this invoice. Absent when a caller does not name one. */
+  run_id?: string;
   elements: Record<ElementKey, ReportElement>;
   outcomes: RuleOutcome[];
 };
@@ -135,7 +139,7 @@ export function runRules(
       }
       if (outcome.outcome === "needs_info") needsInfo.push({ invoice_id: invoice.invoice_number, rule: outcome.rule });
     }
-    return { invoice_id: invoice.invoice_number, elements: reportElements(invoice), outcomes };
+    return toReportInvoice(invoice, outcomes);
   });
 
   return present({
@@ -158,7 +162,9 @@ export function present(report: RunReport): RunReport {
     findings: [...report.findings].sort(compareFindings),
     not_evaluable: [...report.not_evaluable].sort(compareNotes),
     needs_info: [...report.needs_info].sort(compareNotes),
-    invoices: [...report.invoices].sort((left, right) => cmp(left.invoice_id, right.invoice_id)),
+    invoices: [...report.invoices].sort(
+      (left, right) => cmp(left.invoice_id, right.invoice_id) || cmp(left.run_id ?? "", right.run_id ?? ""),
+    ),
   };
 }
 
@@ -441,6 +447,12 @@ function toReportFinding(finding: Finding, doNotPursue: boolean, supersededByInv
   };
   if (finding.convention !== undefined) report.convention = finding.convention;
   return report;
+}
+
+function toReportInvoice(invoice: RunInvoice, outcomes: RuleOutcome[]): ReportInvoice {
+  const elements = reportElements(invoice);
+  if (invoice.run_id === undefined) return { invoice_id: invoice.invoice_number, elements, outcomes };
+  return { invoice_id: invoice.invoice_number, run_id: invoice.run_id, elements, outcomes };
 }
 
 function reportElements(invoice: RunInvoice): Record<ElementKey, ReportElement> {

@@ -41,6 +41,9 @@ importers:
       dd-core:
         specifier: workspace:*
         version: link:../../packages/dd-core
+      dd-extract:
+        specifier: workspace:*
+        version: link:../../packages/extract
 
   packages/dd-core:
     dependencies:
