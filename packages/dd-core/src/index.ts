@@ -32,6 +32,19 @@ export type { ArithmeticInvoice, ArithmeticLine, ArithmeticResult } from "./rule
 export { duplicates } from "./rules/duplicates.js";
 export type { DuplicateInvoice, DuplicateLine, DuplicateResult, ReissueLink } from "./rules/duplicates.js";
 
+export { present, runRules } from "./rules/runRules.js";
+export type {
+  ReportElement,
+  ReportFinding,
+  ReportInvoice,
+  RuleOutcome,
+  RunInvoice,
+  RunLine,
+  RunReport,
+} from "./rules/runRules.js";
+
+export { findingsCsv, reportJson } from "./findings.js";
+
 export { carryDecisions, isConfirmedAbsent, loadReview, startReview, ReviewError, ReviewSession, savedDecisionSchema } from "./review.js";
 export type { ConfirmedAbsent, ReviewResult, ReviewedElement, SavedDecision } from "./review.js";
 
