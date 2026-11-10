@@ -29,6 +29,9 @@ export type { FreeConfig, FreeInvoice, FreeLine, FreeResult } from "./rules/free
 export { arithmetic } from "./rules/arithmetic.js";
 export type { ArithmeticInvoice, ArithmeticLine, ArithmeticResult } from "./rules/arithmetic.js";
 
+export { duplicates } from "./rules/duplicates.js";
+export type { DuplicateInvoice, DuplicateLine, DuplicateResult, ReissueLink } from "./rules/duplicates.js";
+
 export { carryDecisions, isConfirmedAbsent, loadReview, startReview, ReviewError, ReviewSession, savedDecisionSchema } from "./review.js";
 export type { ConfirmedAbsent, ReviewResult, ReviewedElement, SavedDecision } from "./review.js";
 
