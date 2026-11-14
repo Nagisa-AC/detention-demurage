@@ -1,0 +1,16 @@
+{
+  "page": 3,
+  "invoice_number": "SYN-1008",
+  "elements": {
+    "dispute_contact": {
+      "text": "disputes@sample-line.example",
+      "page": 3
+    }
+  },
+  "charge_lines": [
+    {
+      "page": 3,
+      "amount": "300.00"
+    }
+  ]
+}

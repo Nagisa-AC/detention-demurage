@@ -1,0 +1,82 @@
+{
+  "page": 1,
+  "invoice_number": "SYN-1008",
+  "billing_party": "Sample Line Logistics",
+  "billed_party": "Harbor Home Goods",
+  "currency": "USD",
+  "elements": {
+    "bl_number": {
+      "text": "SYN-BL-1008",
+      "page": 1
+    },
+    "container_number": {
+      "text": "SLLU0000074",
+      "page": 1
+    },
+    "port_of_discharge": {
+      "text": "Port Sample",
+      "page": 1
+    },
+    "billed_party_basis": {
+      "text": "Harbor Home Goods is the consignee named on the bill of lading.",
+      "page": 1
+    },
+    "invoice_date": {
+      "text": "2026-05-22",
+      "page": 1
+    },
+    "invoice_due_date": {
+      "text": "2026-06-21",
+      "page": 1
+    },
+    "free_time_days": {
+      "text": "5 days",
+      "page": 1
+    },
+    "free_time_start": {
+      "text": "2026-05-04",
+      "page": 1
+    },
+    "free_time_end": {
+      "text": "2026-05-08",
+      "page": 1
+    },
+    "container_availability_date": {
+      "text": "2026-05-04",
+      "page": 1
+    },
+    "charged_dates": {
+      "text": "2026-05-09 through 2026-05-17",
+      "page": 1
+    },
+    "total_due": {
+      "text": "900.00 USD",
+      "page": 1
+    },
+    "applicable_rule": {
+      "text": "Sample Line Logistics demurrage schedule SL-1",
+      "page": 1
+    },
+    "rates": {
+      "text": "100.00 USD per day",
+      "page": 1
+    },
+    "dispute_info_link": {
+      "text": "https://example.com/sample-line/mitigation",
+      "page": 1
+    },
+    "dispute_timeframes": {
+      "text": "Request a waiver within 30 days. Sample Line Logistics resolves the request within 30 days.",
+      "page": 1
+    },
+    "cert_rules_compliance": {
+      "text": "The charges are consistent with the Federal Maritime Commission's demurrage and detention rules, including 46 CFR part 541 and 46 CFR 545.5.",
+      "page": 1
+    },
+    "cert_no_contribution": {
+      "text": "The billing party's performance did not cause or contribute to these charges.",
+      "page": 1
+    }
+  },
+  "charge_lines": []
+}
