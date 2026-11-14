@@ -1,0 +1,20 @@
+{
+  "page": 3,
+  "status": "ok",
+  "model": "claude-sonnet-5-5",
+  "effort": "low",
+  "prompt_version": "1",
+  "schema_version": "1",
+  "latency_ms": 1895,
+  "usage": {
+    "input_tokens": 2882,
+    "output_tokens": 122,
+    "cache_5m_tokens": 0,
+    "cache_1h_tokens": 0,
+    "cache_read_tokens": 0
+  },
+  "cost_usd": "0.0076824",
+  "inference_geo": "us",
+  "attempts": 1,
+  "document_sha256": "f449b285ed7ab7ff47bea95ab1729bbc6621366f43e815886c799eef72938a11"
+}

@@ -1,0 +1,51 @@
+{
+  "page": 2,
+  "invoice_number": "SYN-1008",
+  "elements": {
+    "container_number": {
+      "text": "SLLU0000074",
+      "page": 2
+    }
+  },
+  "charge_lines": [
+    {
+      "page": 2,
+      "container": "SLLU0000074",
+      "charge": "demurrage",
+      "charged_from": "2026-05-09",
+      "charged_to": "2026-05-10",
+      "days": "2",
+      "rate": "100.00",
+      "amount": "200.00"
+    },
+    {
+      "page": 2,
+      "container": "SLLU0000074",
+      "charge": "demurrage",
+      "charged_from": "2026-05-11",
+      "charged_to": "2026-05-12",
+      "days": "2",
+      "rate": "100.00",
+      "amount": "200.00"
+    },
+    {
+      "page": 2,
+      "container": "SLLU0000074",
+      "charge": "demurrage",
+      "charged_from": "2026-05-16",
+      "charged_to": "2026-05-17",
+      "days": "2",
+      "rate": "100.00",
+      "amount": "200.00"
+    },
+    {
+      "page": 2,
+      "container": "SLLU0000074",
+      "charge": "demurrage",
+      "charged_from": "2026-05-13",
+      "charged_to": "2026-05-15",
+      "days": "3",
+      "rate": "100.00"
+    }
+  ]
+}
