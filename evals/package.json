@@ -1,0 +1,12 @@
+{
+  "name": "dd-evals",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dd-core": "workspace:*",
+    "dd-extract": "workspace:*"
+  }
+}
