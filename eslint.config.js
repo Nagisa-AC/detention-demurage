@@ -5,6 +5,7 @@ import tseslint from "typescript-eslint";
 
 const boundaryMessage = "dd-core must not import packages/extract.";
 const harnessMessage = "The eval harness does not import dd-extract.";
+const webMessage = "apps/dd-web must not import dd-extract.";
 
 export default defineConfig(
   {
@@ -12,11 +13,12 @@ export default defineConfig(
       "**/node_modules/**",
       "**/dist/**",
       "**/coverage/**",
+      "**/.next/**",
       "packages/dd-core/eslint-fixtures/**",
     ],
   },
   {
-    files: ["**/*.ts"],
+    files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, tseslint.configs.recommended],
   },
   {
@@ -101,6 +103,23 @@ export default defineConfig(
             {
               group: ["dd-extract/*", "**/packages/extract", "**/packages/extract/**"],
               message: harnessMessage,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["apps/dd-web/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [{ name: "dd-extract", message: webMessage }],
+          patterns: [
+            {
+              group: ["dd-extract/*", "**/packages/extract", "**/packages/extract/**"],
+              message: webMessage,
             },
           ],
         },
