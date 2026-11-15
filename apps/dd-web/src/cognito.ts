@@ -6,7 +6,7 @@ import { encodeSession, SESSION_TTL_SECONDS, writeSessionCookie } from "./sessio
 const MFA_METHODS = new Set(["mfa", "software_token", "otp", "sms", "totp"]);
 
 export function cognitoRegion(): string | null {
-  const value = process.env.COGNITO_REGION ?? "us-east-1";
+  const value = process.env.COGNITO_REGION ?? "us-east-2";
   if (!/^us-[a-z0-9-]+$/.test(value)) return null;
   return value;
 }

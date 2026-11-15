@@ -62,9 +62,9 @@ describe("dd-web boundary", () => {
     expect(files.some((file) => /sign-?up/i.test(path.basename(path.dirname(file))))).toBe(false);
   });
 
-  it("pins functions to iad1", () => {
+  it("pins functions to cle1", () => {
     const vercel = JSON.parse(fs.readFileSync(path.join(webRoot, "vercel.json"), "utf8")) as { regions?: string[] };
-    expect(vercel.regions).toEqual(["iad1"]);
+    expect(vercel.regions).toEqual(["cle1"]);
     const layout = fs.readFileSync(path.join(appSrc, "app/(signed-in)/layout.tsx"), "utf8");
     expect(layout).toContain('runtime = "nodejs"');
   });

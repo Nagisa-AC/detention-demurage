@@ -2,12 +2,12 @@
 
 Two accounts, created by hand. The app has no sign-up page and no MFA enrollment screen. A hand-created user who has not enrolled an authenticator gets an `MFA_SETUP` challenge on first sign-in, and the app rejects that challenge. Enroll each authenticator here before anyone uses the sign-in page.
 
-The pool is in `us-east-1`. MFA is required. The only factor is an authenticator-app TOTP. SMS is off. Self-service sign-up is off.
+The pool is in `us-east-2` (Ohio). The AWS account is locked to that region. MFA is required. The only factor is an authenticator-app TOTP. SMS is off. Self-service sign-up is off.
 
 Set these where the app runs. Do not commit them.
 
 ```
-COGNITO_REGION=us-east-1
+COGNITO_REGION=us-east-2
 COGNITO_USER_POOL_ID=
 COGNITO_CLIENT_ID=
 DD_SESSION_SECRET=
@@ -19,7 +19,7 @@ DD_SESSION_SECRET=
 
 ```bash
 aws cognito-idp create-user-pool \
-  --region us-east-1 \
+  --region us-east-2 \
   --pool-name dd-recovery \
   --admin-create-user-config AllowAdminCreateUserOnly=true \
   --username-attributes email \
@@ -27,11 +27,11 @@ aws cognito-idp create-user-pool \
   --mfa-configuration OFF
 ```
 
-Copy the pool id (`us-east-1_...`) into `COGNITO_USER_POOL_ID`. Then turn MFA on. Only the software token is enabled. The pool has no SMS configuration, so text-message MFA stays off.
+Copy the pool id (`us-east-2_...`) into `COGNITO_USER_POOL_ID`. Then turn MFA on. Only the software token is enabled. The pool has no SMS configuration, so text-message MFA stays off.
 
 ```bash
 aws cognito-idp set-user-pool-mfa-config \
-  --region us-east-1 \
+  --region us-east-2 \
   --user-pool-id "$COGNITO_USER_POOL_ID" \
   --mfa-configuration ON \
   --software-token-mfa-configuration Enabled=true
@@ -43,7 +43,7 @@ aws cognito-idp set-user-pool-mfa-config \
 
 ```bash
 aws cognito-idp create-user-pool-client \
-  --region us-east-1 \
+  --region us-east-2 \
   --user-pool-id "$COGNITO_USER_POOL_ID" \
   --client-name dd-web \
   --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH \
@@ -59,7 +59,7 @@ Do this once per person. `EMAIL` is the sign-in name. `DISPLAY_NAME` is what the
 
 ```bash
 aws cognito-idp admin-create-user \
-  --region us-east-1 \
+  --region us-east-2 \
   --user-pool-id "$COGNITO_USER_POOL_ID" \
   --username "$EMAIL" \
   --message-action SUPPRESS \
@@ -69,7 +69,7 @@ aws cognito-idp admin-create-user \
     Name=name,Value="$DISPLAY_NAME"
 
 aws cognito-idp admin-set-user-password \
-  --region us-east-1 \
+  --region us-east-2 \
   --user-pool-id "$COGNITO_USER_POOL_ID" \
   --username "$EMAIL" \
   --password "$PASSWORD" \
@@ -84,7 +84,7 @@ Sign in once from the CLI. The response is a challenge named `MFA_SETUP` and a `
 
 ```bash
 aws cognito-idp initiate-auth \
-  --region us-east-1 \
+  --region us-east-2 \
   --client-id "$COGNITO_CLIENT_ID" \
   --auth-flow USER_PASSWORD_AUTH \
   --auth-parameters USERNAME="$EMAIL",PASSWORD="$PASSWORD"
@@ -94,7 +94,7 @@ Start enrollment with that session. The response has a new `Session` and a `Secr
 
 ```bash
 aws cognito-idp associate-software-token \
-  --region us-east-1 \
+  --region us-east-2 \
   --session "$SESSION"
 ```
 
@@ -102,7 +102,7 @@ Type `SecretCode` into the authenticator app (or scan a QR code you build from i
 
 ```bash
 aws cognito-idp verify-software-token \
-  --region us-east-1 \
+  --region us-east-2 \
   --session "$ASSOCIATE_SESSION" \
   --user-code "$CODE"
 ```
@@ -111,7 +111,7 @@ aws cognito-idp verify-software-token \
 
 ```bash
 aws cognito-idp respond-to-auth-challenge \
-  --region us-east-1 \
+  --region us-east-2 \
   --client-id "$COGNITO_CLIENT_ID" \
   --challenge-name MFA_SETUP \
   --session "$VERIFY_SESSION" \
@@ -120,6 +120,6 @@ aws cognito-idp respond-to-auth-challenge \
 
 Repeat for the second account. After this, the sign-in page's authenticator code is a `SOFTWARE_TOKEN_MFA` challenge, which the app accepts.
 
-## amr, after the pool exists
+## amr
 
-AWS documents the `amr` claim as rolling out gradually. A new pool may omit it. Sign in once through the app and confirm the ID token's `amr` contains `mfa`. If it does not, the fallback is to accept only an ID token that came back from the `SOFTWARE_TOKEN_MFA` challenge. The MFA check stays. That fallback is not in the app yet.
+A live sign-in on this pool, password plus authenticator code, returned an ID token whose `amr` claim contains `mfa`. Sign-out cleared the session. The check stays as written. No fallback.
