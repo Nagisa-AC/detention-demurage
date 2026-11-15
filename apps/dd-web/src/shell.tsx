@@ -1,3 +1,4 @@
+import { signOut } from "./app/(signed-in)/sign-out";
 import type { Session } from "./session";
 
 export type ShellTab = "customers" | "review" | "cases";
@@ -28,7 +29,12 @@ export function Shell({ session, active }: { session: Session; active: ShellTab 
           )}
         </nav>
         <div className="account">
-          {session.name} · MFA on
+          <span>
+            {session.name} · MFA on
+          </span>
+          <form action={signOut}>
+            <button type="submit">Sign out</button>
+          </form>
         </div>
       </header>
       <main className="frame" />

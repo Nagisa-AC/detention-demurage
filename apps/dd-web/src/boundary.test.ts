@@ -54,7 +54,7 @@ describe("dd-web boundary", () => {
       if (file.includes(`${path.sep}sign-in${path.sep}`)) return false;
       return fs.readFileSync(file, "utf8").includes('"use server"');
     });
-    expect(actions.map(rel)).toEqual(["(signed-in)/account.ts"]);
+    expect(actions.map(rel).sort()).toEqual(["(signed-in)/account.ts", "(signed-in)/sign-out.ts"]);
     for (const file of actions) expect(fs.readFileSync(file, "utf8")).toContain("requireSession(");
 
     const signIn = files.filter((file) => file.includes(`${path.sep}sign-in${path.sep}`));

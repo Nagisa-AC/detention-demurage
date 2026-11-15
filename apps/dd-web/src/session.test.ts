@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readAccountName } from "./app/(signed-in)/account";
+import { signOut } from "./app/(signed-in)/sign-out";
 import { accountWasRead, resetAccountRead } from "./app/(signed-in)/account-work";
 import { GET } from "./app/api/session/route";
 import { resetSessionRoute, sessionRouteRan } from "./app/api/session/work";
@@ -16,7 +17,9 @@ import {
   openSession,
   readSession,
   requireSession,
+  resetCookieClearer,
   sessionCookieOptions,
+  setCookieClearer,
   setCookieReader,
 } from "./session";
 
@@ -50,6 +53,7 @@ beforeEach(() => {
   redirectCalls.urls.length = 0;
   resetSessionRoute();
   resetAccountRead();
+  resetCookieClearer();
   setLog((line) => {
     logs.push(line);
   });
@@ -176,6 +180,34 @@ describe("server action", () => {
     setCookieReader(async () => cookie({ name: "Ibrahim", exp: Math.floor(Date.now() / 1000) + 60, mfa: true }));
     await expect(readAccountName()).resolves.toBe("Ibrahim");
     expect(accountWasRead()).toBe(true);
+  });
+});
+
+describe("sign-out", () => {
+  it("clears the session cookie and redirects to sign-in", async () => {
+    setCookieReader(async () => cookie({ name: "Ibrahim", exp: Math.floor(Date.now() / 1000) + 60, mfa: true }));
+    let cleared = false;
+    setCookieClearer(async () => {
+      cleared = true;
+    });
+    await expect(signOut()).rejects.toMatchObject({ digest: expect.stringContaining("/sign-in") });
+    expect(cleared).toBe(true);
+    expect(redirectCalls.urls).toEqual(["/sign-in"]);
+    expect(logs).toEqual(["path /sign-out session yes"]);
+    expect(logs.join("\n")).not.toContain("Ibrahim");
+    setCookieReader(async () => undefined);
+    await expect(readSession()).resolves.toBeNull();
+  });
+
+  it("does not clear the cookie when there is no session", async () => {
+    setCookieReader(async () => undefined);
+    let cleared = false;
+    setCookieClearer(async () => {
+      cleared = true;
+    });
+    await expect(signOut()).rejects.toMatchObject({ digest: expect.stringContaining("/sign-in") });
+    expect(cleared).toBe(false);
+    expect(redirectCalls.urls).toEqual(["/sign-in"]);
   });
 });
 

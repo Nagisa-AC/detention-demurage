@@ -52,6 +52,27 @@ export async function writeSessionCookie(token: string): Promise<void> {
   jar.set(SESSION_COOKIE, token, sessionCookieOptions(process.env.NODE_ENV === "production"));
 }
 
+const defaultClearCookie = async (): Promise<void> => {
+  const { cookies } = await import("next/headers");
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, "", { ...sessionCookieOptions(process.env.NODE_ENV === "production"), maxAge: 0 });
+};
+
+let clearCookie = defaultClearCookie;
+
+/** Test seam. Sign-out clears the cookie through this. */
+export function setCookieClearer(fn: () => Promise<void>): void {
+  clearCookie = fn;
+}
+
+export function resetCookieClearer(): void {
+  clearCookie = defaultClearCookie;
+}
+
+export async function clearSessionCookie(): Promise<void> {
+  await clearCookie();
+}
+
 export function encodeSession(input: { name: string; exp: number; mfa: boolean }, secret: string): string {
   const body = Buffer.from(JSON.stringify({ name: input.name, exp: input.exp, mfa: input.mfa }), "utf8").toString(
     "base64url",

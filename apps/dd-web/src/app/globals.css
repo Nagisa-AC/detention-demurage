@@ -62,8 +62,30 @@ a:hover {
 
 .account {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   font-size: 13px;
   color: #C9CED8;
+}
+
+.account form {
+  margin: 0;
+}
+
+.account button {
+  font: inherit;
+  font-size: 13px;
+  color: #C9CED8;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.account button:hover {
+  color: #FFFFFF;
 }
 
 .frame {

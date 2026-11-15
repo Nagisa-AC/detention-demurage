@@ -65,6 +65,7 @@ describe("shell", () => {
     const review = renderToStaticMarkup(await ReviewPage());
     expect(review).toContain("D&amp;D Recovery");
     expect(review).toContain("Ibrahim · MFA on");
+    expect(review).toContain("Sign out");
     expect(review).toContain("Customers");
     expect(review).toContain("Review queue");
     expect(review).toContain("Cases");
