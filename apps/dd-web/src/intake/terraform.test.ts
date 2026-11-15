@@ -1,0 +1,156 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, expect, it } from "vitest";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const infra = path.join(repoRoot, "infra");
+const planFile = path.join(os.tmpdir(), `dd-tf-${process.pid}.tfplan`);
+
+type Change = {
+  type: string;
+  name: string;
+  change: { after: Record<string, unknown> | null };
+};
+
+let plan: { resource_changes?: Change[] };
+
+beforeAll(() => {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    AWS_ACCESS_KEY_ID: "testing",
+    AWS_SECRET_ACCESS_KEY: "testing",
+    AWS_REGION: "us-east-2",
+    AWS_DEFAULT_REGION: "us-east-2",
+    AWS_EC2_METADATA_DISABLED: "true",
+    TF_IN_AUTOMATION: "1",
+  };
+  delete env.AWS_SESSION_TOKEN;
+  delete env.AWS_PROFILE;
+  execFileSync("terraform", ["init", "-backend=false", "-input=false", "-no-color"], {
+    cwd: infra,
+    env,
+    stdio: "pipe",
+  });
+  execFileSync(
+    "terraform",
+    [
+      "plan",
+      "-refresh=false",
+      "-input=false",
+      "-no-color",
+      `-out=${planFile}`,
+      "-var=aws_account_id=123456789012",
+      "-var=vercel_team_slug=example",
+      "-var=vercel_project_name=dd-recovery",
+      "-var=vercel_oidc_thumbprint=0123456789abcdef0123456789abcdef01234567",
+      "-var=bucket_name=dd-recovery-plan-test",
+      "-var=vpc_id=vpc-0123456789abcdef0",
+      "-var=subnet_id=subnet-0123456789abcdef0",
+      "-var=ami_id=ami-0123456789abcdef0",
+    ],
+    { cwd: infra, env, stdio: "pipe" },
+  );
+  const shown = execFileSync("terraform", ["show", "-json", planFile], { cwd: infra, env, encoding: "utf8" });
+  plan = JSON.parse(shown) as { resource_changes?: Change[] };
+}, 180_000);
+
+describe("terraform plan", () => {
+  it("expires incoming objects, their noncurrent versions, and incomplete multipart uploads", () => {
+    const lifecycle = resource("aws_s3_bucket_lifecycle_configuration", "documents");
+    const rule = first(lifecycle.rule);
+    expect(rule.id).toBe("incoming-expire");
+    expect(rule.status).toBe("Enabled");
+    expect(block(rule, "filter").prefix).toBe("incoming/");
+    expect(block(rule, "expiration").days).toBe(1);
+    expect(block(rule, "noncurrent_version_expiration").noncurrent_days).toBe(1);
+    expect(block(rule, "abort_incomplete_multipart_upload").days_after_initiation).toBe(1);
+  });
+
+  it("keeps the bucket private, encrypted, versioned, and TLS-only", () => {
+    const access = resource("aws_s3_bucket_public_access_block", "documents");
+    expect(access.block_public_acls).toBe(true);
+    expect(access.block_public_policy).toBe(true);
+    expect(access.ignore_public_acls).toBe(true);
+    expect(access.restrict_public_buckets).toBe(true);
+    const versioning = resource("aws_s3_bucket_versioning", "documents");
+    expect(block(versioning, "versioning_configuration").status).toBe("Enabled");
+    const encryption = JSON.stringify(resource("aws_s3_bucket_server_side_encryption_configuration", "documents"));
+    expect(encryption).toContain("AES256");
+    const policy = String(resource("aws_s3_bucket_policy", "documents").policy);
+    expect(policy).toContain("aws:SecureTransport");
+  });
+
+  it("matches the copy flow and does not grant delete or a static key", () => {
+    const types = (plan.resource_changes ?? []).map((change) => change.type);
+    expect(types).not.toContain("aws_iam_access_key");
+    expect(types).not.toContain("aws_ssm_parameter");
+    const web = statements(String(resource("aws_iam_role_policy", "web").policy));
+    const worker = statements(String(resource("aws_iam_role_policy", "worker").policy));
+    expect(actions(web, "s3:GetObject").every((arn) => arn.endsWith("/incoming/*"))).toBe(true);
+    expect(actions(web, "s3:GetObject").length).toBeGreaterThan(0);
+    expect(actions(web, "s3:PutObject").every((arn) => arn.endsWith("/incoming/*") || arn.endsWith("/documents/*"))).toBe(true);
+    expect(actions(worker, "s3:GetObject").every((arn) => arn.endsWith("/documents/*"))).toBe(true);
+    expect(actions(worker, "s3:GetObject").some((arn) => arn.includes("incoming"))).toBe(false);
+    expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/database-url"))).toBe(true);
+    expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/anthropic-api-key"))).toBe(true);
+    const all = JSON.stringify(plan);
+    expect(all).not.toContain("s3:DeleteObject");
+    const trust = String(resource("aws_iam_role", "web").assume_role_policy);
+    expect(trust).toContain("sts:AssumeRoleWithWebIdentity");
+    expect(trust).toContain("environment:production");
+    expect(trust).not.toContain("environment:preview");
+  });
+
+  it("gives the worker a public address, no inbound rule, and no secret in user data", () => {
+    const instance = resource("aws_instance", "worker");
+    expect(instance.instance_type).toBe("t4g.nano");
+    expect(instance.associate_public_ip_address).toBe(true);
+    expect(instance.key_name ?? null).toBeNull();
+    const group = resource("aws_security_group", "worker");
+    expect(group.ingress ?? []).toEqual([]);
+    const egress = JSON.stringify(group.egress);
+    expect(egress).toContain("443");
+    expect(egress).not.toContain("\"from_port\":22");
+    expect(typeof instance.user_data).toBe("string");
+    expect(String(instance.user_data).length).toBeGreaterThan(0);
+    const script = fs.readFileSync(path.join(infra, "worker-user-data.sh"), "utf8");
+    const rendered = script.replaceAll("${bucket}", "dd-recovery-plan-test").replaceAll("$${NODE}", "${NODE}");
+    expect(rendered).toContain("DD_BUCKET=dd-recovery-plan-test");
+    for (const forbidden of ["postgres://", "sk-ant", "AKIA", "BEGIN OPENSSH", "BEGIN RSA", "password="]) {
+      expect(rendered, forbidden).not.toContain(forbidden);
+    }
+  });
+});
+
+function resource(type: string, name: string): Record<string, unknown> {
+  const found = (plan.resource_changes ?? []).find((change) => change.type === type && change.name === name);
+  if (found?.change.after == null) throw new Error(`missing ${type}.${name}`);
+  return found.change.after;
+}
+
+function first(value: unknown): Record<string, unknown> {
+  const item = Array.isArray(value) ? value[0] : value;
+  if (item === null || typeof item !== "object") throw new Error("missing block");
+  return item as Record<string, unknown>;
+}
+
+function block(value: Record<string, unknown>, key: string): Record<string, unknown> {
+  return first(value[key]);
+}
+
+function statements(policy: string): { actions: string[]; resources: string[] }[] {
+  const parsed = JSON.parse(policy) as {
+    Statement?: { Action?: string | string[]; Resource?: string | string[] }[];
+  };
+  return (parsed.Statement ?? []).map((statement) => ({
+    actions: statement.Action === undefined ? [] : [statement.Action].flat(),
+    resources: statement.Resource === undefined ? [] : [statement.Resource].flat(),
+  }));
+}
+
+function actions(items: { actions: string[]; resources: string[] }[], action: string): string[] {
+  return items.filter((item) => item.actions.includes(action)).flatMap((item) => item.resources);
+}

@@ -401,6 +401,36 @@ describe("database", () => {
     expect(isConfirmedAbsent(reviewed.elements.free_time_end)).toBe(true);
     expect(reviewed.decisions).toHaveLength(2);
   });
+
+  it("keeps one document per customer and hash and starts a run with no page text", async () => {
+    const customerId = await insertCustomer();
+    const inserted = await app.query<{ id: string }>(
+      `INSERT INTO "Document" (customer_id, sha256, byte_size, storage_key)
+       VALUES ($1, $2, 128, $3)
+       RETURNING id`,
+      [customerId, documentHash, `documents/${customerId}/${documentHash}.pdf`],
+    );
+    const documentId = inserted.rows[0]?.id;
+    if (documentId === undefined) throw new Error("missing document id");
+    await expectSqlState(
+      app.query(`INSERT INTO "Document" (customer_id, sha256, byte_size) VALUES ($1, $2, 128)`, [
+        customerId,
+        documentHash,
+      ]),
+      "23505",
+    );
+    const count = await app.query<{ n: number }>(`SELECT count(*)::int AS n FROM "Document" WHERE customer_id = $1`, [
+      customerId,
+    ]);
+    expect(count.rows[0]?.n).toBe(1);
+    const run = await app.query<{ attempts: number; page_records: unknown }>(
+      `INSERT INTO "ProcessingRun" (customer_id, document_id, kind)
+       VALUES ($1, $2, 'extract')
+       RETURNING attempts, page_records`,
+      [customerId, documentId],
+    );
+    expect(run.rows[0]).toEqual({ attempts: 0, page_records: null });
+  });
 });
 
 async function insertCustomer(): Promise<string> {

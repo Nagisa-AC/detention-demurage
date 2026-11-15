@@ -47,7 +47,11 @@ describe("dd-web boundary", () => {
     expect(fs.readFileSync(layouts[0] ?? "", "utf8")).toContain("requireSession(");
 
     const routes = files.filter((file) => file.endsWith("route.ts"));
-    expect(routes.map(rel)).toEqual(["api/session/route.ts"]);
+    expect(routes.map(rel).sort()).toEqual([
+      "api/session/route.ts",
+      "api/uploads/confirm/route.ts",
+      "api/uploads/route.ts",
+    ]);
     for (const file of routes) expect(fs.readFileSync(file, "utf8")).toContain("requireSession(");
 
     const actions = files.filter((file) => {

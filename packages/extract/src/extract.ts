@@ -53,6 +53,8 @@ export type ExtractOptions = {
   model?: string;
   effort?: Effort;
   fake?: PageReader;
+  /** When set, only these 1-based pages are sent to the model. */
+  onlyPages?: readonly number[];
 };
 
 /**
@@ -66,11 +68,15 @@ export async function extract(options: ExtractOptions): Promise<ExtractResult> {
   if (!isEffort(effort)) throw new Error("effort is not a supported level.");
   const read = reader(options);
   const pages = await splitPdf(options.pdf);
+  const only = options.onlyPages;
+  const allowed = only === undefined ? null : new Set(only);
   const result: ExtractedPage[] = [];
   for (let index = 0; index < pages.length; index += 1) {
+    const pageNumber = index + 1;
+    if (allowed !== null && !allowed.has(pageNumber)) continue;
     const pdf = pages[index];
     if (pdf === undefined) continue;
-    result.push(await readPage(read, { pdf, pageNumber: index + 1, model, effort, outDir: options.outDir }));
+    result.push(await readPage(read, { pdf, pageNumber, model, effort, outDir: options.outDir }));
   }
   fs.mkdirSync(options.outDir, { recursive: true });
   fs.writeFileSync(

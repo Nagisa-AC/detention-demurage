@@ -286,6 +286,31 @@ describe("extract", () => {
       fs.rmSync(geoDir, { recursive: true, force: true });
     }
   });
+
+  it("does not call the model for pages outside onlyPages", async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage();
+    doc.addPage();
+    const pdf = await doc.save();
+    const seen: number[] = [];
+    const dir = tempDir();
+    try {
+      const result = await extract({
+        pdf,
+        outDir: dir,
+        provider: "fake",
+        onlyPages: [2],
+        fake: (input) => {
+          seen.push(input.pageNumber);
+          return reply(validPage());
+        },
+      });
+      expect(seen).toEqual([2]);
+      expect(result.pages.map((page) => page.record.page)).toEqual([2]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 function reply(text: string, usage: Usage = oneCall): ModelResponse {

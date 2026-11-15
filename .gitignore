@@ -2,6 +2,13 @@ node_modules/
 dist/
 coverage/
 .next/
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+infra/plan.json
+infra/*.tfvars
+!infra/terraform.tfvars.example
 .env
 .env.*
 !.env.example
