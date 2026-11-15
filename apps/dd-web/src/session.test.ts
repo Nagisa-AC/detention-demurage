@@ -226,7 +226,7 @@ describe("sign-in", () => {
   });
 
   it("does not set a cookie when the token has no MFA", async () => {
-    process.env.COGNITO_USER_POOL_ID = "us-east-1_TestPool";
+    process.env.COGNITO_USER_POOL_ID = "us-east-2_TestPool";
     process.env.COGNITO_CLIENT_ID = "client";
     const fetchSpy = vi.fn<typeof fetch>(async () => Response.json({ AuthenticationResult: { IdToken: "not-a-jwt" } }));
     vi.stubGlobal("fetch", fetchSpy);
@@ -262,8 +262,8 @@ describe("Cognito claims", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("talks to Cognito in us-east-1 and refuses a non-US region without calling it", async () => {
-    process.env.COGNITO_USER_POOL_ID = "us-east-1_TestPool";
+  it("talks to Cognito in us-east-2 and refuses a non-US region without calling it", async () => {
+    process.env.COGNITO_USER_POOL_ID = "us-east-2_TestPool";
     process.env.COGNITO_CLIENT_ID = "client";
     const calls: { url: string; body: string }[] = [];
     const fetchImpl: typeof fetch = async (input, init) => {
@@ -280,8 +280,8 @@ describe("Cognito claims", () => {
     );
     expect(exchanged).toEqual({ idToken: "header.payload.sig" });
     expect(calls.map((call) => call.url)).toEqual([
-      "https://cognito-idp.us-east-1.amazonaws.com/",
-      "https://cognito-idp.us-east-1.amazonaws.com/",
+      "https://cognito-idp.us-east-2.amazonaws.com/",
+      "https://cognito-idp.us-east-2.amazonaws.com/",
     ]);
     const second = calls[1];
     expect(second).toBeDefined();
@@ -299,7 +299,7 @@ describe("Cognito claims", () => {
   });
 
   it("sends a secret hash and not the client secret", async () => {
-    process.env.COGNITO_USER_POOL_ID = "us-east-1_TestPool";
+    process.env.COGNITO_USER_POOL_ID = "us-east-2_TestPool";
     process.env.COGNITO_CLIENT_ID = "client";
     process.env.COGNITO_CLIENT_SECRET = "client-secret-marker";
     let body = "";

@@ -1,0 +1,256 @@
+// Production is a Neon project in aws-us-east-2.
+// Tests use TEST_DATABASE_URL and refuse a Neon host.
+// Money is numeric. Calendar dates are date. There is no float column.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  configId    String   @unique @map("config_id")
+  displayName String   @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  documents      Document[]
+  invoices       Invoice[]
+  elementValues  ElementValue[]
+  chargeLines    ChargeLine[]
+  processingRuns ProcessingRun[]
+  findings       Finding[]
+  cases          Case[]
+  caseLines      CaseLine[]
+  submissions    Submission[]
+  ledgerEntries  LedgerEntry[]
+  feeInvoices    FeeInvoice[]
+  auditEvents    AuditEvent[]
+
+  @@map("Customer")
+}
+
+model Document {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId    String   @map("customer_id") @db.Uuid
+  sha256        String   @db.VarChar(64)
+  byteSize      Int      @map("byte_size")
+  receivedAt    DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  storageKey    String?  @map("storage_key")
+  duplicateOfId String?  @map("duplicate_of_id") @db.Uuid
+
+  customer    Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  duplicateOf Document?        @relation("DocumentDuplicate", fields: [duplicateOfId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  duplicates  Document[]       @relation("DocumentDuplicate")
+  invoices    Invoice[]
+  runs        ProcessingRun[]
+
+  @@index([customerId])
+  @@index([customerId, sha256])
+  @@map("Document")
+}
+
+model Invoice {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId    String    @map("customer_id") @db.Uuid
+  documentId    String    @map("document_id") @db.Uuid
+  invoiceNumber String    @map("invoice_number")
+  billingParty  String    @map("billing_party")
+  billedParty   String    @map("billed_party")
+  currency      String    @db.VarChar(3)
+  invoiceDate   DateTime? @map("invoice_date") @db.Date
+  dueDate       DateTime? @map("due_date") @db.Date
+  pageCount     Int       @map("page_count")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  document      Document       @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  elementValues ElementValue[]
+  chargeLines   ChargeLine[]
+  runs          ProcessingRun[]
+  findings      Finding[]
+
+  @@index([customerId])
+  @@index([documentId])
+  @@map("Invoice")
+}
+
+/// state is present, unreadable, suggested_absent, or not_applicable.
+/// confirmed_absent is rejected by ElementValue_state_check in the migration.
+model ElementValue {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String  @map("customer_id") @db.Uuid
+  invoiceId  String  @map("invoice_id") @db.Uuid
+  elementKey String  @map("element_key")
+  state      String
+  text       String?
+  value      String?
+  page       Int?
+  regionX    Decimal? @map("region_x") @db.Decimal(10, 8)
+  regionY    Decimal? @map("region_y") @db.Decimal(10, 8)
+  regionW    Decimal? @map("region_w") @db.Decimal(10, 8)
+  regionH    Decimal? @map("region_h") @db.Decimal(10, 8)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([invoiceId, elementKey])
+  @@index([customerId])
+  @@map("ElementValue")
+}
+
+model ChargeLine {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  invoiceId   String   @map("invoice_id") @db.Uuid
+  lineId      String   @map("line_id")
+  container   String
+  charge      String
+  chargedFrom DateTime @map("charged_from") @db.Date
+  chargedTo   DateTime @map("charged_to") @db.Date
+  days        Int
+  rate        Decimal  @db.Decimal(12, 2)
+  amount      Decimal  @db.Decimal(12, 2)
+  currency    String   @db.VarChar(3)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([invoiceId, lineId])
+  @@index([customerId])
+  @@map("ChargeLine")
+}
+
+model ProcessingRun {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId     String    @map("customer_id") @db.Uuid
+  documentId     String?   @map("document_id") @db.Uuid
+  invoiceId      String?   @map("invoice_id") @db.Uuid
+  kind           String
+  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz(6)
+  promptVersion  String?   @map("prompt_version")
+  modelVersion   String?   @map("model_version")
+  schemaVersion  String?   @map("schema_version")
+
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  invoice  Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  findings Finding[]
+
+  @@index([customerId])
+  @@map("ProcessingRun")
+}
+
+model Finding {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId       String  @map("customer_id") @db.Uuid
+  invoiceId        String  @map("invoice_id") @db.Uuid
+  processingRunId  String  @map("processing_run_id") @db.Uuid
+  rule             String
+  ruleVersion      Int     @map("rule_version")
+  ground           String
+  citations        Json    @db.JsonB
+  lineIds          Json    @map("line_ids") @db.JsonB
+  expected         String
+  actual           String
+  disputableAmount Decimal @map("disputable_amount") @db.Decimal(12, 2)
+  currency         String  @db.VarChar(3)
+  evidence         Json    @db.JsonB
+  explain          String
+  convention       String?
+
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  processingRun ProcessingRun @relation(fields: [processingRunId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([customerId])
+  @@index([invoiceId])
+  @@map("Finding")
+}
+
+model Case {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  openedAt   DateTime @default(now()) @map("opened_at") @db.Timestamptz(6)
+
+  customer Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  lines    CaseLine[]
+
+  @@index([customerId])
+  @@map("Case")
+}
+
+model CaseLine {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  caseId     String   @map("case_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  case     Case     @relation(fields: [caseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([customerId])
+  @@index([caseId])
+  @@map("CaseLine")
+}
+
+/// Append-only for dd_app. Foreign keys are ON DELETE RESTRICT and ON UPDATE RESTRICT.
+model Submission {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([customerId])
+  @@map("Submission")
+}
+
+/// Append-only for dd_app. Foreign keys are ON DELETE RESTRICT and ON UPDATE RESTRICT.
+model LedgerEntry {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  amount     Decimal  @db.Decimal(12, 2)
+  currency   String   @db.VarChar(3)
+  kind       String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([customerId])
+  @@map("LedgerEntry")
+}
+
+model FeeInvoice {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String    @map("customer_id") @db.Uuid
+  amount     Decimal   @db.Decimal(12, 2)
+  currency   String    @db.VarChar(3)
+  issuedOn   DateTime? @map("issued_on") @db.Date
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([customerId])
+  @@map("FeeInvoice")
+}
+
+/// Append-only for dd_app. Review decisions are rows here.
+/// Foreign keys are ON DELETE RESTRICT and ON UPDATE RESTRICT.
+model AuditEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  at         DateTime @default(now()) @db.Timestamptz(6)
+  actor      String
+  action     String
+  payload    Json     @db.JsonB
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([customerId])
+  @@map("AuditEvent")
+}
