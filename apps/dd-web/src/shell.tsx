@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { signOut } from "./app/(signed-in)/sign-out";
 import type { Session } from "./session";
 
@@ -10,7 +11,7 @@ const TABS: { id: ShellTab; href: string; label: string }[] = [
 ];
 
 /** Header and page frame. The caller has already called requireSession. */
-export function Shell({ session, active }: { session: Session; active: ShellTab }) {
+export function Shell({ session, active, children }: { session: Session; active: ShellTab; children?: ReactNode }) {
   return (
     <div className="shell">
       <header className="topbar">
@@ -37,7 +38,7 @@ export function Shell({ session, active }: { session: Session; active: ShellTab 
           </form>
         </div>
       </header>
-      <main className="frame" />
+      <main className="frame">{children}</main>
     </div>
   );
 }

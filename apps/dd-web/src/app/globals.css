@@ -152,3 +152,53 @@ a:hover {
   margin: 0;
   font-size: 14px;
 }
+
+.upload {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+  font-size: 14px;
+}
+
+.upload p {
+  margin: 0;
+}
+
+.upload label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upload input,
+.upload select {
+  font: inherit;
+  color: #14181F;
+  background: #FFFFFF;
+  border: 1px solid #C9CED8;
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+}
+
+.upload button {
+  font: inherit;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: #1F4FB8;
+  border: none;
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  width: fit-content;
+}
+
+.upload button:hover {
+  background: #163A8A;
+}
+
+.upload button:disabled {
+  background: #8AA0C8;
+}

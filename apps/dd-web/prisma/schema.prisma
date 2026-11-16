@@ -49,7 +49,7 @@ model Document {
   runs        ProcessingRun[]
 
   @@index([customerId])
-  @@index([customerId, sha256])
+  @@unique([customerId, sha256])
   @@map("Document")
 }
 
@@ -124,6 +124,7 @@ model ChargeLine {
   @@map("ChargeLine")
 }
 
+/// page_records holds status, reason, attempts, and versions. It does not hold model text.
 model ProcessingRun {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId     String    @map("customer_id") @db.Uuid
@@ -135,6 +136,10 @@ model ProcessingRun {
   promptVersion  String?   @map("prompt_version")
   modelVersion   String?   @map("model_version")
   schemaVersion  String?   @map("schema_version")
+  attempts       Int       @default(0)
+  leaseToken     String?   @map("lease_token") @db.Uuid
+  leasedAt       DateTime? @map("leased_at") @db.Timestamptz(6)
+  pageRecords    Json?     @map("page_records") @db.JsonB
 
   customer Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   document Document? @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
