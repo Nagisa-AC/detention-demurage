@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -111,9 +112,7 @@ describe("terraform plan", () => {
     expect(instance.key_name ?? null).toBeNull();
     const group = resource("aws_security_group", "worker");
     expect(group.ingress ?? []).toEqual([]);
-    const egress = JSON.stringify(group.egress);
-    expect(egress).toContain("443");
-    expect(egress).not.toContain("\"from_port\":22");
+    expect(egressRules(group.egress).some((rule) => rule.from_port === 22 || rule.to_port === 22)).toBe(false);
     expect(typeof instance.user_data).toBe("string");
     expect(String(instance.user_data).length).toBeGreaterThan(0);
     const script = fs.readFileSync(path.join(infra, "worker-user-data.sh"), "utf8");
@@ -122,6 +121,26 @@ describe("terraform plan", () => {
     for (const forbidden of ["postgres://", "sk-ant", "AKIA", "BEGIN OPENSSH", "BEGIN RSA", "password="]) {
       expect(rendered, forbidden).not.toContain(forbidden);
     }
+    for (const line of [
+      "DynamicUser=yes",
+      "NoNewPrivileges=yes",
+      "ProtectSystem=strict",
+      "ProtectHome=yes",
+      "PrivateTmp=yes",
+      "ReadOnlyPaths=/opt/dd-worker",
+      "install -d -o root -g root -m 0755 /opt/dd-worker",
+    ]) {
+      expect(rendered, line).toContain(line);
+    }
+    expect(rendered).not.toContain("User=root");
+    expect(String(instance.user_data)).toBe(createHash("sha1").update(rendered).digest("hex"));
+  });
+
+  it("opens worker egress on 5432 for Neon", () => {
+    const rules = egressRules(resource("aws_security_group", "worker").egress);
+    expect(rules.map((rule) => rule.from_port).sort((a, b) => a - b)).toEqual([443, 5432]);
+    const postgres = rules.find((rule) => rule.from_port === 5432);
+    expect(postgres).toMatchObject({ to_port: 5432, protocol: "tcp", cidr_blocks: ["0.0.0.0/0"] });
   });
 });
 
@@ -153,4 +172,17 @@ function statements(policy: string): { actions: string[]; resources: string[] }[
 
 function actions(items: { actions: string[]; resources: string[] }[], action: string): string[] {
   return items.filter((item) => item.actions.includes(action)).flatMap((item) => item.resources);
+}
+
+function egressRules(value: unknown): { from_port: number; to_port: number; protocol: string; cidr_blocks: string[] }[] {
+  const items = Array.isArray(value) ? value : [value];
+  return items.filter((item) => item !== null && typeof item === "object").map((item) => {
+    const rule = item as Record<string, unknown>;
+    return {
+      from_port: Number(rule.from_port),
+      to_port: Number(rule.to_port),
+      protocol: String(rule.protocol),
+      cidr_blocks: Array.isArray(rule.cidr_blocks) ? rule.cidr_blocks.map(String) : [],
+    };
+  });
 }

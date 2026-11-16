@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 dnf install -y nodejs
-install -d -m 0755 /opt/dd-worker
+install -d -o root -g root -m 0755 /opt/dd-worker
 NODE=$(command -v node)
 cat > /etc/systemd/system/dd-worker.service <<UNIT
 [Unit]
@@ -11,6 +11,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/opt/dd-worker
 WorkingDirectory=/opt/dd-worker
 Environment=DD_BUCKET=${bucket}
 ExecStart=$${NODE} /opt/dd-worker/main.mjs
