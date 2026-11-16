@@ -1,47 +1,7 @@
 locals {
   database_url_parameter  = "/dd/worker/database-url"
   anthropic_key_parameter = "/dd/worker/anthropic-api-key"
-  vercel_issuer           = "oidc.vercel.com/${var.vercel_team_slug}"
-  vercel_audience         = "https://vercel.com/${var.vercel_team_slug}"
-  vercel_production_sub   = "owner:${var.vercel_team_slug}:project:${var.vercel_project_name}:environment:production"
   bucket_arn              = "arn:aws:s3:::${var.bucket_name}"
-  oidc_provider_arn       = "arn:aws:iam::${var.aws_account_id}:oidc-provider/${local.vercel_issuer}"
-}
-
-resource "aws_iam_openid_connect_provider" "vercel" {
-  url             = "https://${local.vercel_issuer}"
-  client_id_list  = [local.vercel_audience]
-  thumbprint_list = [lower(var.vercel_oidc_thumbprint)]
-}
-
-data "aws_iam_policy_document" "web_trust" {
-  statement {
-    effect  = "Allow"
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-
-    principals {
-      type        = "Federated"
-      identifiers = [local.oidc_provider_arn]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${local.vercel_issuer}:aud"
-      values   = [local.vercel_audience]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${local.vercel_issuer}:sub"
-      values   = [local.vercel_production_sub]
-    }
-  }
-}
-
-resource "aws_iam_role" "web" {
-  name               = "dd-web"
-  assume_role_policy = data.aws_iam_policy_document.web_trust.json
-  depends_on         = [aws_iam_openid_connect_provider.vercel]
 }
 
 # Presign PutObject, HeadObject the incoming copy source, and CopyObject onto documents/.
@@ -66,9 +26,15 @@ data "aws_iam_policy_document" "web" {
   }
 }
 
-resource "aws_iam_role_policy" "web" {
+# No login profile, so this user cannot open the console.
+# No access key here: create it with the CLI in README.md so the secret stays out of state.
+resource "aws_iam_user" "dd_web" {
+  name = "dd-web"
+}
+
+resource "aws_iam_user_policy" "dd_web" {
   name   = "dd-web-documents"
-  role   = aws_iam_role.web.id
+  user   = aws_iam_user.dd_web.name
   policy = data.aws_iam_policy_document.web.json
 }
 
@@ -98,8 +64,8 @@ data "aws_iam_policy_document" "worker" {
   }
 
   statement {
-    sid    = "ReadWorkerParameters"
-    effect = "Allow"
+    sid     = "ReadWorkerParameters"
+    effect  = "Allow"
     actions = ["ssm:GetParameter"]
 
     resources = [

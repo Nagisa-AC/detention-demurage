@@ -2,9 +2,9 @@ output "bucket_name" {
   value = aws_s3_bucket.documents.bucket
 }
 
-output "web_role_arn" {
-  description = "Set this as AWS_ROLE_ARN on the Vercel project. It is not an access key."
-  value       = aws_iam_role.web.arn
+output "web_user_name" {
+  description = "IAM user for the web app. Create its access key with the CLI in README.md. Terraform does not create the key."
+  value       = aws_iam_user.dd_web.name
 }
 
 output "worker_instance_id" {
