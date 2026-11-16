@@ -1,18 +1,12 @@
 # Copy to terraform.tfvars. That file is gitignored.
 # You apply this. The agent and CI do not.
+# See README.md for the access key and the Vercel variables.
 
-aws_account_id         = "123456789012"
-vercel_team_slug       = "your-team-slug"
-vercel_project_name    = "dd-recovery"
-vercel_oidc_thumbprint = "0000000000000000000000000000000000000000"
-bucket_name            = "dd-recovery-us-east-2-change-me"
-vpc_id                 = "vpc-change-me"
-subnet_id              = "subnet-change-me"
-ami_id                 = "ami-change-me"
+bucket_name = "dd-recovery-us-east-2-change-me"
+vpc_id      = "vpc-change-me"
+subnet_id   = "subnet-change-me"
+ami_id      = "ami-change-me"
 
-# Thumbprint of oidc.vercel.com (strip the colons):
-# openssl s_client -servername oidc.vercel.com -showcerts -connect oidc.vercel.com:443 </dev/null 2>/dev/null | openssl x509 -fingerprint -sha1 -noout
-#
 # Current Amazon Linux 2023 arm64 AMI:
 # aws ssm get-parameter --region us-east-2 --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64 --query Parameter.Value --output text
 #
@@ -20,5 +14,8 @@ ami_id                 = "ami-change-me"
 # aws ssm put-parameter --region us-east-2 --name /dd/worker/database-url --type SecureString --value '...'
 # aws ssm put-parameter --region us-east-2 --name /dd/worker/anthropic-api-key --type SecureString --value '...'
 #
-# After apply, set AWS_ROLE_ARN and DD_BUCKET on the Vercel project, enable OIDC, copy the worker build to /opt/dd-worker/main.mjs, then:
+# The database URL must set sslmode=require, verify-ca, or verify-full.
+#
+# After apply, create the web user's access key (README.md), set the Vercel variables, copy the worker
+# build to /opt/dd-worker/main.mjs as root mode 0644, then:
 # sudo systemctl enable --now dd-worker

@@ -27,7 +27,7 @@ export async function POST(request: Request): Promise<Response> {
   const config = uploadConfig();
   if (config === null) return json(503, { error: "Upload is not configured." });
 
-  const client = await webS3(config.roleArn);
+  const client = webS3();
   const bucket = config.bucket;
   return withIntake(config.databaseUrl, async (db) => {
     const result = await issueUpload({

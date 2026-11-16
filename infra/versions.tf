@@ -1,5 +1,5 @@
 # Apply this yourself. CI plans it and does not apply it.
-# There is no access key and no Parameter Store value in this configuration.
+# The web user's access key and the worker's Parameter Store values are created outside Terraform, so they stay out of state.
 
 terraform {
   required_version = ">= 1.5.0"

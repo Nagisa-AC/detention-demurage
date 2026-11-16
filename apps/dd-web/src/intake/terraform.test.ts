@@ -43,10 +43,6 @@ beforeAll(() => {
       "-input=false",
       "-no-color",
       `-out=${planFile}`,
-      "-var=aws_account_id=123456789012",
-      "-var=vercel_team_slug=example",
-      "-var=vercel_project_name=dd-recovery",
-      "-var=vercel_oidc_thumbprint=0123456789abcdef0123456789abcdef01234567",
       "-var=bucket_name=dd-recovery-plan-test",
       "-var=vpc_id=vpc-0123456789abcdef0",
       "-var=subnet_id=subnet-0123456789abcdef0",
@@ -84,25 +80,44 @@ describe("terraform plan", () => {
     expect(policy).toContain("aws:SecureTransport");
   });
 
-  it("matches the copy flow and does not grant delete or a static key", () => {
+  it("matches the copy flow and does not grant delete", () => {
     const types = (plan.resource_changes ?? []).map((change) => change.type);
-    expect(types).not.toContain("aws_iam_access_key");
     expect(types).not.toContain("aws_ssm_parameter");
-    const web = statements(String(resource("aws_iam_role_policy", "web").policy));
     const worker = statements(String(resource("aws_iam_role_policy", "worker").policy));
-    expect(actions(web, "s3:GetObject").every((arn) => arn.endsWith("/incoming/*"))).toBe(true);
-    expect(actions(web, "s3:GetObject").length).toBeGreaterThan(0);
-    expect(actions(web, "s3:PutObject").every((arn) => arn.endsWith("/incoming/*") || arn.endsWith("/documents/*"))).toBe(true);
     expect(actions(worker, "s3:GetObject").every((arn) => arn.endsWith("/documents/*"))).toBe(true);
     expect(actions(worker, "s3:GetObject").some((arn) => arn.includes("incoming"))).toBe(false);
     expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/database-url"))).toBe(true);
     expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/anthropic-api-key"))).toBe(true);
     const all = JSON.stringify(plan);
     expect(all).not.toContain("s3:DeleteObject");
-    const trust = String(resource("aws_iam_role", "web").assume_role_policy);
-    expect(trust).toContain("sts:AssumeRoleWithWebIdentity");
-    expect(trust).toContain("environment:production");
-    expect(trust).not.toContain("environment:preview");
+    expect(all).not.toContain("oidc.vercel.com");
+    expect(all).not.toContain("AssumeRoleWithWebIdentity");
+    expect((plan.resource_changes ?? []).some((change) => change.type === "aws_iam_role" && change.name === "web")).toBe(false);
+  });
+
+  it("gives dd-web exactly the copy actions, with no other policy and no login", () => {
+    const types = (plan.resource_changes ?? []).map((change) => change.type);
+    expect(types).not.toContain("aws_iam_access_key");
+    expect(types).not.toContain("aws_iam_user_login_profile");
+    expect(types).not.toContain("aws_iam_user_policy_attachment");
+    expect(types).not.toContain("aws_iam_user_group_membership");
+    expect(types).not.toContain("aws_iam_openid_connect_provider");
+    expect(types.filter((type) => type === "aws_iam_user")).toEqual(["aws_iam_user"]);
+    expect(types.filter((type) => type === "aws_iam_user_policy")).toEqual(["aws_iam_user_policy"]);
+
+    const user = resource("aws_iam_user", "dd_web");
+    expect(user.name).toBe("dd-web");
+    expect(user.permissions_boundary ?? null).toBeNull();
+    const policyResource = resource("aws_iam_user_policy", "dd_web");
+    expect(policyResource.user).toBe("dd-web");
+    expect(policyResource.name).toBe("dd-web-documents");
+    const web = statements(String(policyResource.policy));
+    expect(web.flatMap((statement) => statement.actions).sort()).toEqual(["s3:GetObject", "s3:PutObject"]);
+    expect(actions(web, "s3:GetObject")).toEqual(["arn:aws:s3:::dd-recovery-plan-test/incoming/*"]);
+    expect(actions(web, "s3:PutObject").sort()).toEqual([
+      "arn:aws:s3:::dd-recovery-plan-test/documents/*",
+      "arn:aws:s3:::dd-recovery-plan-test/incoming/*",
+    ]);
   });
 
   it("gives the worker a public address, no inbound rule, and no secret in user data", () => {

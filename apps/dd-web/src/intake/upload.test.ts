@@ -8,6 +8,7 @@ import { POST as uploadPost } from "../app/api/uploads/route";
 import { resetUploadRoute, uploadRouteRan } from "../app/api/uploads/work";
 import { setLog } from "../log";
 import { encodeSession, setCookieReader } from "../session";
+import { uploadConfig } from "./aws";
 import { readUploadFields } from "./body";
 import { confirmUpload } from "./confirm";
 import { issueUpload } from "./issue";
@@ -33,7 +34,15 @@ beforeEach(() => {
     logs.push(line);
   });
   setCookieReader(async () => undefined);
-  for (const key of ["DD_SESSION_SECRET", "AWS_ROLE_ARN", "DD_BUCKET", "DATABASE_URL"]) {
+  for (const key of [
+    "DD_SESSION_SECRET",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_ROLE_ARN",
+    "DD_BUCKET",
+    "DATABASE_URL",
+  ]) {
     saved.set(key, process.env[key]);
     delete process.env[key];
   }
@@ -79,14 +88,56 @@ describe("upload request", () => {
     if (!refused.ok) expect(JSON.stringify(refused)).not.toContain("http");
   });
 
-  it("returns 503 and no URL when the role is not configured", async () => {
+  it("returns 503 and no URL when upload is not configured", async () => {
     setCookieReader(async () => cookie());
     const response = await uploadPost(
       new Request("http://localhost/api/uploads", { method: "POST", body: JSON.stringify(fields({})) }),
     );
     expect(response.status).toBe(503);
-    const body = await response.json();
-    expect(body.url).toBeUndefined();
+    expect(await response.json()).toEqual({ error: "Upload is not configured." });
+  });
+
+  it("refuses when either access key is missing and does not log the other", async () => {
+    setCookieReader(async () => cookie());
+    process.env.DD_BUCKET = "dd-bucket";
+    process.env.DATABASE_URL = "postgres://db.example/dd?sslmode=require";
+    process.env.AWS_ACCESS_KEY_ID = "AKIA_TEST_KEY";
+    delete process.env.AWS_SECRET_ACCESS_KEY;
+    const missingSecret = await uploadPost(
+      new Request("http://localhost/api/uploads", { method: "POST", body: JSON.stringify(fields({})) }),
+    );
+    expect(missingSecret.status).toBe(503);
+    expect(JSON.stringify(await missingSecret.json())).not.toContain("AKIA_TEST_KEY");
+    expect(logs.join("\n")).not.toContain("AKIA_TEST_KEY");
+
+    delete process.env.AWS_ACCESS_KEY_ID;
+    process.env.AWS_SECRET_ACCESS_KEY = "secret-marker-value";
+    const missingId = await confirmPost(
+      new Request("http://localhost/api/uploads/confirm", {
+        method: "POST",
+        body: JSON.stringify({ customerId: CUSTOMER, uploadId: UPLOAD, sha256: SYNTHETIC, byteSize: 128 }),
+      }),
+    );
+    expect(missingId.status).toBe(503);
+    expect(await missingId.json()).toEqual({ error: "Upload is not configured." });
+    expect(JSON.stringify(logs)).not.toContain("secret-marker-value");
+  });
+
+  it("keeps the static keys out of the config object", () => {
+    process.env.DD_BUCKET = "dd-bucket";
+    process.env.DATABASE_URL = "postgres://db.example/dd?sslmode=require";
+    process.env.AWS_ACCESS_KEY_ID = "AKIA_TEST_KEY";
+    process.env.AWS_SECRET_ACCESS_KEY = "secret-marker-value";
+    const config = uploadConfig();
+    expect(config).toEqual({ bucket: "dd-bucket", databaseUrl: process.env.DATABASE_URL });
+    const dumped = JSON.stringify(config);
+    expect(dumped).not.toContain("AKIA_TEST_KEY");
+    expect(dumped).not.toContain("secret-marker-value");
+    const source = fs.readFileSync(path.join(intakeDir, "aws.ts"), "utf8");
+    expect(source).not.toContain("AWS_ROLE_ARN");
+    expect(source).not.toContain("oidc");
+    expect(source).not.toContain("console.");
+    expect(source).not.toContain("credentials:");
   });
 });
 
