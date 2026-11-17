@@ -6,6 +6,7 @@ type Customer = { id: string; displayName: string };
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const EXPIRES = "This upload was not accepted. The incoming object expires within a day.";
+const BROWSER_SEND = "The browser could not send the file.";
 
 export function UploadForm({ customers }: { customers: Customer[] }) {
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
@@ -57,14 +58,20 @@ export function UploadForm({ customers }: { customers: Customer[] }) {
         setMessage("Upload is not configured.");
         return;
       }
-      const put = await fetch(issued.value.url, {
-        method: "PUT",
-        headers: {
-          "content-type": "application/pdf",
-          "x-amz-checksum-sha256": hexToBase64(sha256),
-        },
-        body: bytes,
-      });
+      let put: Response;
+      try {
+        put = await fetch(issued.value.url, {
+          method: "PUT",
+          headers: {
+            "content-type": "application/pdf",
+            "x-amz-checksum-sha256": hexToBase64(sha256),
+          },
+          body: bytes,
+        });
+      } catch {
+        setMessage(BROWSER_SEND);
+        return;
+      }
       if (!put.ok) {
         setMessage(EXPIRES);
         return;

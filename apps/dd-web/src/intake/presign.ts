@@ -4,7 +4,7 @@ import { PDF_CONTENT_TYPE } from "./limits";
 
 const SIGNED = new Set(["content-type", "content-length", "x-amz-checksum-sha256"]);
 
-/** Sign a 60-second PUT. The caller supplies the client; production uses the OIDC role. */
+/** Sign a 60-second PUT. The caller supplies the client. Production uses the dd-web access key. */
 export async function presignPdfPut(input: {
   client: S3Client;
   bucket: string;

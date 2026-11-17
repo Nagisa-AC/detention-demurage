@@ -1,3 +1,14 @@
+variable "upload_origin" {
+  type        = string
+  description = "The one browser origin allowed to PUT a PDF. No wildcard."
+  default     = "https://detention-demurage.vercel.app"
+
+  validation {
+    condition     = can(regex("^https://[a-z0-9.-]+$", var.upload_origin)) && !strcontains(var.upload_origin, "*")
+    error_message = "upload_origin must be one https origin and must not contain a wildcard."
+  }
+}
+
 variable "bucket_name" {
   type        = string
   description = "Private document bucket in us-east-2. The name is global."

@@ -87,6 +87,23 @@ data "aws_iam_policy_document" "documents_tls" {
   }
 }
 
+# The browser PUT sends content-length, content-type, and x-amz-checksum-sha256.
+# host is signed too, and the browser sets it. The other x-amz-* values are query parameters.
+resource "aws_s3_bucket_cors_configuration" "documents" {
+  bucket = aws_s3_bucket.documents.id
+
+  cors_rule {
+    allowed_origins = [var.upload_origin]
+    allowed_methods = ["PUT"]
+    allowed_headers = [
+      "content-length",
+      "content-type",
+      "x-amz-checksum-sha256",
+    ]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_s3_bucket_policy" "documents" {
   bucket = aws_s3_bucket.documents.id
   policy = data.aws_iam_policy_document.documents_tls.json

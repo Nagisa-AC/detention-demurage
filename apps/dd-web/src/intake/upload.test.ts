@@ -297,6 +297,11 @@ describe("wording", () => {
     const form = fs.readFileSync(path.join(intakeDir, "../app/(signed-in)/customers/upload-form.tsx"), "utf8");
     expect(form.toLowerCase()).not.toContain("delet");
     expect(form).not.toContain("filename");
+    expect(form).toContain("The browser could not send the file.");
+    expect(form).toContain("This upload was not accepted. The incoming object expires within a day.");
+    const presign = fs.readFileSync(path.join(intakeDir, "presign.ts"), "utf8");
+    expect(presign).not.toContain("OIDC");
+    expect(presign).toContain("dd-web access key");
   });
 });
 
