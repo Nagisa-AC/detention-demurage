@@ -89,6 +89,8 @@ model ElementValue {
   text       String?
   value      String?
   page       Int?
+  /// True when this text was found on that page. False when the model returned text that was not found. Null when nothing was read.
+  grounded   Boolean?
   regionX    Decimal? @map("region_x") @db.Decimal(10, 8)
   regionY    Decimal? @map("region_y") @db.Decimal(10, 8)
   regionW    Decimal? @map("region_w") @db.Decimal(10, 8)
@@ -115,6 +117,8 @@ model ChargeLine {
   rate        Decimal  @db.Decimal(12, 2)
   amount      Decimal  @db.Decimal(12, 2)
   currency    String   @db.VarChar(3)
+  /// True when every printed field was found on its page. False when the model returned text that was not found.
+  grounded    Boolean?
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   invoice  Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)

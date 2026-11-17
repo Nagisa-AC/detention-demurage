@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
-import { ELEMENT_KEYS } from "dd-core";
+import { ELEMENT_KEYS, ELEMENTS, StitchError, type ElementKey, type PageExtraction } from "dd-core";
 import { MAX_PAGES, PageLimitError } from "dd-extract";
-import { GroundingError } from "./errors.js";
+import { GroundingError, StitchFailure } from "./errors.js";
 import { foldText, groundValue } from "./ground.js";
-
-const HEADERS = ["invoice_number", "billing_party", "billed_party", "currency"] as const;
+import { MOVEMENT, assembleRead, type SavedRead } from "./read.js";
 
 export type GroundPage = {
   page: number;
@@ -15,6 +14,7 @@ export type GroundPage = {
   schemaVersion: string;
   reason?: string;
   values: readonly { field: string; text: string }[];
+  extraction?: PageExtraction;
 };
 
 export type StoredPage = {
@@ -35,6 +35,7 @@ export type ProcessResult = {
   modelVersion: string | null;
   promptVersion: string | null;
   schemaVersion: string | null;
+  read?: SavedRead;
 };
 
 export async function processDocument(input: {
@@ -59,7 +60,7 @@ export async function processDocument(input: {
         page: index + 1,
         status: "no_text_layer",
         reason: "The page has no text layer.",
-        ungrounded: [...ELEMENT_KEYS].sort(),
+        ungrounded: [],
       });
     } else {
       withText.push(index + 1);
@@ -85,7 +86,7 @@ export async function processDocument(input: {
   stored.sort((left, right) => left.page - right.page);
   const failed = stored.some((page) => page.status === "failed");
   const version = extracted.find((page) => page.status === "ok") ?? extracted[0];
-  return {
+  const result: ProcessResult = {
     finish: failed ? "failed" : "ok",
     modelCalled: true,
     pages: stored,
@@ -93,6 +94,16 @@ export async function processDocument(input: {
     promptVersion: version?.promptVersion ?? null,
     schemaVersion: version?.schemaVersion ?? null,
   };
+  if (failed) return result;
+  const extractions = extractionsOf(extracted);
+  if (extractions === null) return result;
+  try {
+    result.read = assembleRead(extractions, texts);
+  } catch (error) {
+    if (error instanceof StitchError) throw new StitchFailure();
+    throw error;
+  }
+  return result;
 }
 
 export function sha256Hex(bytes: Uint8Array): string {
@@ -125,21 +136,9 @@ function storePage(page: GroundPage, pageText: string): StoredPage {
       model: page.model,
       prompt_version: page.promptVersion,
       schema_version: page.schemaVersion,
-      ungrounded: [...ELEMENT_KEYS].sort(),
+      ungrounded: missed(page, pageText),
     };
     return failed;
-  }
-  const ungrounded = new Set<string>();
-  const grounded = new Set<string>();
-  for (const value of page.values) {
-    if (groundValue(pageText, value.text) === "miss") ungrounded.add(value.field);
-    else grounded.add(value.field);
-  }
-  for (const key of ELEMENT_KEYS) {
-    if (!grounded.has(key)) ungrounded.add(key);
-  }
-  for (const header of HEADERS) {
-    if (!grounded.has(header)) ungrounded.add(header);
   }
   const stored: StoredPage = {
     page: page.page,
@@ -148,9 +147,43 @@ function storePage(page: GroundPage, pageText: string): StoredPage {
     model: page.model,
     prompt_version: page.promptVersion,
     schema_version: page.schemaVersion,
-    ungrounded: [...ungrounded].sort(),
+    ungrounded: missed(page, pageText),
   };
   return stored;
+}
+
+function extractionsOf(pages: readonly GroundPage[]): PageExtraction[] | null {
+  const ok = pages.filter((page) => page.status === "ok");
+  if (ok.length === 0) return null;
+  const extractions: PageExtraction[] = [];
+  for (const page of ok) {
+    if (page.extraction === undefined) return null;
+    extractions.push(page.extraction);
+  }
+  return extractions;
+}
+
+/**
+ * Ungrounded means the model returned a value this page does not contain.
+ * A value the model never returned is suggested_absent. An export-only element is not applicable.
+ */
+function missed(page: GroundPage, pageText: string): string[] {
+  const ungrounded = new Set<string>();
+  for (const value of page.values) {
+    if (!countsAsUngrounded(value.field)) continue;
+    if (groundValue(pageText, value.text) === "miss") ungrounded.add(value.field);
+  }
+  return [...ungrounded].sort();
+}
+
+function countsAsUngrounded(field: string): boolean {
+  if (!isElementKey(field)) return true;
+  const applicability = ELEMENTS[field].applicability;
+  return applicability === "both" || applicability === MOVEMENT;
+}
+
+function isElementKey(field: string): field is ElementKey {
+  return (ELEMENT_KEYS as readonly string[]).includes(field);
 }
 
 function safeReason(reason: string | undefined): string {

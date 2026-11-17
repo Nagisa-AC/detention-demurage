@@ -73,7 +73,11 @@ function toGround(page: ExtractedPage): GroundPage {
     if (reason !== undefined) failed.reason = reason;
     return failed;
   }
-  return { ...base, status: "ok", values: valuesOf(page.extraction) };
+  return { ...base, status: "ok", values: valuesOf(page.extraction), extraction: page.extraction };
+}
+
+export function extractionValues(extraction: PageExtraction): { field: string; text: string }[] {
+  return valuesOf(extraction);
 }
 
 /** SDK names and HTTP statuses. A sentence is model output, and its text is not kept. */

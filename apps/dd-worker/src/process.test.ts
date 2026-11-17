@@ -1,6 +1,9 @@
-import { ELEMENT_KEYS } from "dd-core";
+import { ELEMENT_KEYS, pageExtractionSchema, parseContainer, type PageExtraction } from "dd-core";
 import { describe, expect, it } from "vitest";
+import { NormalizeError, StitchFailure } from "./errors.js";
+import { extractionValues } from "./model.js";
 import { processDocument, sha256Hex, type GroundPage } from "./process.js";
+import { pagesFromFixture, textOf } from "./synthetic-pages.js";
 
 const page = (number: number): GroundPage => ({
   page: number,
@@ -39,7 +42,7 @@ describe("processDocument", () => {
     expect(mismatch.pages[0]?.reason).toBe("checksum");
   });
 
-  it("marks every element unreadable and skips the model when the text layer is empty", async () => {
+  it("skips the model when the text layer is empty and does not call those elements ungrounded", async () => {
     const pdf = new Uint8Array([9]);
     const hash = sha256Hex(pdf);
     const result = await processDocument({
@@ -51,8 +54,9 @@ describe("processDocument", () => {
     });
     expect(result.modelCalled).toBe(false);
     expect(result.finish).toBe("ok");
+    expect(result.read).toBeUndefined();
     expect(result.pages.map((page) => page.status)).toEqual(["no_text_layer", "no_text_layer"]);
-    for (const page of result.pages) expect(page.ungrounded).toEqual([...ELEMENT_KEYS].sort());
+    for (const page of result.pages) expect(page.ungrounded).toEqual([]);
   });
 
   it("keeps a verbatim value, a normalized date, and a miss, on that page only", async () => {
@@ -87,10 +91,7 @@ describe("processDocument", () => {
     });
     expect(requested).toEqual([1]);
     const stored = result.pages.find((page) => page.page === 1);
-    expect(stored?.ungrounded).not.toContain("invoice_number");
-    expect(stored?.ungrounded).not.toContain("invoice_date");
-    expect(stored?.ungrounded).toContain("bl_number");
-    expect(stored?.ungrounded).toContain("port_of_discharge");
+    expect(stored?.ungrounded).toEqual(["bl_number", "port_of_discharge"]);
     const body = JSON.stringify(result);
     expect(body).not.toContain(SECRET);
     expect(body).not.toContain("SYN-1001");
@@ -118,7 +119,7 @@ describe("processDocument", () => {
       ],
     });
     const page = result.pages.find((item) => item.page === 2);
-    expect(page?.ungrounded).toContain("invoice_number");
+    expect(page?.ungrounded).toEqual(["invoice_number"]);
     expect(JSON.stringify(result)).not.toContain("ONLYONPAGEONE");
   });
 
@@ -155,4 +156,183 @@ describe("processDocument", () => {
       }),
     ).rejects.toMatchObject({ name: "GroundingError", message: "A page could not be grounded." });
   });
+
+  it("saves the clean fixture as one invoice, twenty elements, and a normalized line", async () => {
+    const pages = pagesFromFixture("clean");
+    const result = await read(pages);
+    const saved = result.read;
+    if (saved === undefined) throw new Error("missing read");
+    expect(result.finish).toBe("ok");
+    expect(result.pages.every((page) => page.ungrounded.length === 0)).toBe(true);
+    expect(saved.invoiceNumber).toBe("SYN-1001");
+    expect(saved.billingParty).toBe("Sample Line Logistics");
+    expect(saved.billedParty).toBe("Harbor Home Goods");
+    expect(saved.currency).toBe("USD");
+    expect(saved.invoiceDate).toBe("2026-01-20");
+    expect(saved.dueDate).toBe("2026-02-19");
+    expect(saved.pageCount).toBe(1);
+    expect(saved.elements).toHaveLength(ELEMENT_KEYS.length);
+    expect(saved.elements.map((element) => element.key)).toEqual([...ELEMENT_KEYS]);
+    const absent = saved.elements.find((element) => element.key === "earliest_return_date");
+    expect(absent).toMatchObject({ state: "not_applicable", text: null, value: null, page: null, grounded: null });
+    for (const element of saved.elements) {
+      if (element.key === "earliest_return_date") continue;
+      expect(element.state, element.key).toBe("present");
+      expect(element.grounded, element.key).toBe(true);
+      expect(element.page, element.key).toBe(1);
+    }
+    expect(saved.elements.find((element) => element.key === "container_number")?.value).toBe(parseContainer("SLLU0000011"));
+    expect(saved.elements.find((element) => element.key === "total_due")?.value).toBe("450.00");
+    expect(saved.lines).toEqual([
+      {
+        lineId: "ln_1",
+        container: "SLLU0000011",
+        charge: "demurrage",
+        chargedFrom: "2026-01-10",
+        chargedTo: "2026-01-12",
+        days: 3,
+        rate: "150.00",
+        amount: "450.00",
+        currency: "USD",
+        grounded: true,
+      },
+    ]);
+    expect(JSON.stringify(result.pages)).not.toContain("SYN-1001");
+  });
+
+  it("keeps an ungrounded value, and does not call a missing or export-only element ungrounded", async () => {
+    const invented = "NOT-ON-PAGE";
+    const [clean] = pagesFromFixture("clean");
+    if (clean === undefined) throw new Error("missing page");
+    const pageText = textOf(clean);
+    const elements = { ...clean.elements };
+    delete elements.port_of_discharge;
+    elements.bl_number = { text: invented, page: 1 };
+    elements.earliest_return_date = { text: "Export Yard", page: 1 };
+    const page = pageExtractionSchema.parse({ ...clean, elements });
+    const result = await read([page], [pageText]);
+    const saved = result.read;
+    if (saved === undefined) throw new Error("missing read");
+    expect(result.pages[0]?.ungrounded).toEqual(["bl_number"]);
+    expect(saved.elements.find((element) => element.key === "bl_number")).toMatchObject({
+      state: "present",
+      text: invented,
+      grounded: false,
+      page: 1,
+    });
+    expect(saved.elements.find((element) => element.key === "port_of_discharge")).toMatchObject({
+      state: "suggested_absent",
+      text: null,
+      page: null,
+      grounded: null,
+    });
+    expect(saved.elements.find((element) => element.key === "earliest_return_date")).toMatchObject({
+      state: "not_applicable",
+      text: null,
+      page: null,
+      grounded: null,
+    });
+    expect(JSON.stringify(result.pages)).not.toContain(invented);
+  });
+
+  it("turns a stitch conflict into unreadable and still finishes ok", async () => {
+    const [first] = pagesFromFixture("clean");
+    if (first === undefined) throw new Error("missing page");
+    const second = pageExtractionSchema.parse({
+      page: 2,
+      elements: { bl_number: { text: "SYN-BL-OTHER", page: 2 } },
+      charge_lines: [],
+    });
+    const conflicted = pageExtractionSchema.parse({
+      ...first,
+      invoice_number: "SYN-OTHER",
+    });
+    const result = await read([first, second], [textOf(first), "SYN-BL-OTHER"]);
+    const saved = result.read;
+    if (saved === undefined) throw new Error("missing read");
+    expect(result.finish).toBe("ok");
+    expect(saved.invoiceNumber).toBe("SYN-1001");
+    expect(saved.elements.find((element) => element.key === "bl_number")).toMatchObject({
+      state: "unreadable",
+      text: "SYN-BL-1001",
+      page: 1,
+      grounded: true,
+    });
+    const headers = await read([conflicted, pageExtractionSchema.parse({ ...second, invoice_number: "SYN-1001" })], [
+      textOf(conflicted),
+      "SYN-1001",
+    ]);
+    expect(headers.finish).toBe("ok");
+    expect(headers.read?.invoiceNumber).toBe("SYN-OTHER");
+  });
+
+  it("normalizes a printed charge date", async () => {
+    const [clean] = pagesFromFixture("clean");
+    if (clean === undefined) throw new Error("missing page");
+    const line = clean.charge_lines[0];
+    if (line === undefined) throw new Error("missing line");
+    const page = pageExtractionSchema.parse({
+      ...clean,
+      charge_lines: [{ ...line, charged_from: "March 2, 2026", charged_to: "March 4, 2026" }],
+    });
+    const result = await read([page]);
+    expect(result.read?.lines[0]).toMatchObject({ chargedFrom: "2026-03-02", chargedTo: "2026-03-04", grounded: true });
+  });
+
+  it("fails a missing page and a line that will not parse, without the model text", async () => {
+    const secret = "NOT-MONEY-SECRET";
+    const [clean] = pagesFromFixture("clean");
+    if (clean === undefined) throw new Error("missing page");
+    const skipped = pageExtractionSchema.parse({
+      page: 3,
+      elements: { bl_number: { text: secret, page: 3 } },
+      charge_lines: [],
+    });
+    const stitchError = await rejection(read([clean, skipped], [textOf(clean), "middle page", "tail page"]));
+    expect(stitchError).toMatchObject({ name: "StitchFailure", message: "The pages could not be stitched." });
+    expect(stitchError.stack ?? "").not.toContain(secret);
+
+    const line = clean.charge_lines[0];
+    if (line === undefined) throw new Error("missing line");
+    const bad = pageExtractionSchema.parse({ ...clean, charge_lines: [{ ...line, amount: secret }] });
+    const normalizeError = await rejection(read([bad]));
+    expect(normalizeError).toBeInstanceOf(NormalizeError);
+    expect(normalizeError).toMatchObject({ name: "NormalizeError", message: "The invoice could not be normalized." });
+    expect(normalizeError.stack ?? "").not.toContain(secret);
+    expect(stitchError).toBeInstanceOf(StitchFailure);
+  });
 });
+
+function okPage(extraction: PageExtraction): GroundPage {
+  return {
+    page: extraction.page,
+    status: "ok",
+    attempts: 1,
+    model: "fake",
+    promptVersion: "1",
+    schemaVersion: "1",
+    values: extractionValues(extraction),
+    extraction,
+  };
+}
+
+function read(pages: readonly PageExtraction[], texts: readonly string[] = pages.map(textOf)): Promise<Awaited<ReturnType<typeof processDocument>>> {
+  const pdf = new Uint8Array([4, 5, 6]);
+  const hash = sha256Hex(pdf);
+  return processDocument({
+    pdf,
+    declaredHash: hash,
+    allow: new Set([hash]),
+    readPages: async () => texts,
+    extract: async () => pages.map(okPage),
+  });
+}
+
+async function rejection(run: Promise<unknown>): Promise<Error> {
+  try {
+    await run;
+  } catch (error) {
+    if (error instanceof Error) return error;
+  }
+  throw new Error("The call did not fail.");
+}
