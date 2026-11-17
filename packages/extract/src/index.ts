@@ -6,6 +6,7 @@ export type { Usage } from "./cost.js";
 
 export { MAX_PAGES, PageLimitError, TempDirError, tempDirError } from "./errors.js";
 export { extract } from "./extract.js";
+export { splitPdf } from "./pdf.js";
 export type { ExtractedPage, ExtractOptions, ExtractResult, PageReader, PageRecord } from "./extract.js";
 export { DEFAULT_EFFORT, DEFAULT_MODEL, PROMPT_VERSION, SCHEMA_VERSION } from "./extract.js";
 export type { Effort } from "./extract.js";

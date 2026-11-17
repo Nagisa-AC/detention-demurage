@@ -96,5 +96,7 @@ describe("worker bundle", () => {
     expect(main).toContain("./pdf.worker.mjs");
     expect(main).toContain("--diagnose");
     expect(main).toContain("refused not_synthetic");
+    expect(main).toContain("The bundled reader could not split the PDF.");
+    expect(main).toContain("pdf.slice()");
   }, 60_000);
 });
