@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -95,7 +96,10 @@ if (entry !== undefined && path.resolve(entry) === fileURLToPath(import.meta.url
   }
 }
 
-/** Read one synthetic PDF with the bundled worker and do not call the model. */
+/**
+ * Read one synthetic PDF the way the worker does, and do not call the network.
+ * pdfjs runs first, then extract's pdf-lib split. A stub stands in for the model.
+ */
 async function checkPdf(file: string | undefined): Promise<number> {
   if (file === undefined || file === "") {
     console.error("Pass the PDF path.");
@@ -103,19 +107,48 @@ async function checkPdf(file: string | undefined): Promise<number> {
   }
   const pdf = new Uint8Array(readFileSync(file));
   let sawText = false;
-  const result = await processDocument({
-    pdf,
-    declaredHash: sha256Hex(pdf),
-    allow: syntheticAllowlist(),
-    readPages: readPdfPages,
-    extract: async (_pdf, pages) => {
-      sawText = pages.length > 0;
-      return [];
-    },
-  });
-  const reason = result.pages[0]?.reason;
-  if (reason === "checksum" || reason === "not_synthetic") {
-    console.error("The bundled reader did not accept the PDF.");
+  try {
+    const result = await processDocument({
+      pdf,
+      declaredHash: sha256Hex(pdf),
+      allow: syntheticAllowlist(),
+      readPages: readPdfPages,
+      extract: async (fileBytes, pages) => {
+        const outDir = mkdtempSync(path.join(os.tmpdir(), "dd-worker-check-"));
+        try {
+          const extracted = await extract({
+            pdf: fileBytes,
+            outDir,
+            provider: "fake",
+            onlyPages: pages,
+            fake: () => ({
+              text: "{}",
+              stopReason: "end_turn",
+              usage: {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_5m_tokens: 0,
+                cache_1h_tokens: 0,
+                cache_read_tokens: 0,
+              },
+              inferenceGeo: "us",
+            }),
+          });
+          sawText = pages.length > 0 && extracted.pages.length > 0;
+        } finally {
+          rmSync(outDir, { recursive: true, force: true });
+        }
+        return [];
+      },
+    });
+    const reason = result.pages[0]?.reason;
+    if (reason === "checksum" || reason === "not_synthetic") {
+      console.error("The bundled reader did not accept the PDF.");
+      return 1;
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Error";
+    console.error(`The bundled reader could not split the PDF. ${detail}`);
     return 1;
   }
   if (!sawText) {
