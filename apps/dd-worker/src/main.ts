@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { fromInstanceMetadata } from "@aws-sdk/credential-providers";
 import { extract } from "dd-extract";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pg from "pg";
@@ -16,7 +17,13 @@ import { readWorkerSecrets } from "./ssm.js";
 const REGION = "us-east-2";
 
 export async function main(): Promise<void> {
-  const ssm = new SSMClient({ region: REGION });
+  // DynamicUser has no home directory. The AWS SDK calls os.homedir() while loading
+  // shared config, and that throws ENOENT. /tmp is private to this service.
+  if (process.env.HOME === undefined || process.env.HOME === "") {
+    process.env.HOME = "/tmp";
+  }
+  const credentials = fromInstanceMetadata();
+  const ssm = new SSMClient({ region: REGION, credentials });
   const secrets = await readWorkerSecrets(async (name) => {
     const out = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
     const value = out.Parameter?.Value;
@@ -27,7 +34,7 @@ export async function main(): Promise<void> {
   const bucket = process.env.DD_BUCKET;
   if (bucket === undefined || bucket === "") throw new Error("DD_BUCKET is not set.");
   const pool = new pg.Pool({ connectionString: secrets.databaseUrl, max: 2 });
-  const s3 = new S3Client({ region: REGION });
+  const s3 = new S3Client({ region: REGION, credentials });
   const allow = syntheticAllowlist();
   for (;;) {
     const outcome = await runOnce({

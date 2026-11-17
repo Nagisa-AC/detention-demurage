@@ -57,6 +57,14 @@ find /opt/dd-worker -type f -exec chmod 0644 {} +
 
 systemctl enable dd-worker
 systemctl restart dd-worker
+restarts_before=$(systemctl show -p NRestarts --value dd-worker)
+sleep 15
+restarts_after=$(systemctl show -p NRestarts --value dd-worker)
+if ! systemctl is-active --quiet dd-worker || [[ "$restarts_after" -gt "$restarts_before" ]]; then
+  echo "dd-worker did not stay up." >&2
+  journalctl -u dd-worker -n 30 --no-pager >&2
+  exit 1
+fi
 systemctl is-active dd-worker
 /usr/bin/node-24 -v
 cat /opt/dd-worker/REVISION
