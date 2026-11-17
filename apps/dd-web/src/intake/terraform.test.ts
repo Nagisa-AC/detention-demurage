@@ -114,7 +114,7 @@ describe("terraform plan", () => {
     expect((plan.resource_changes ?? []).some((change) => change.type === "aws_iam_role" && change.name === "web")).toBe(false);
   });
 
-  it("gives dd-web exactly the copy actions, with no other policy and no login", () => {
+  it("gives dd-web the copy actions and a read of stored documents, with no other policy and no login", () => {
     const types = (plan.resource_changes ?? []).map((change) => change.type);
     expect(types).not.toContain("aws_iam_access_key");
     expect(types).not.toContain("aws_iam_user_login_profile");
@@ -131,8 +131,11 @@ describe("terraform plan", () => {
     expect(policyResource.user).toBe("dd-web");
     expect(policyResource.name).toBe("dd-web-documents");
     const web = statements(String(policyResource.policy));
-    expect(web.flatMap((statement) => statement.actions).sort()).toEqual(["s3:GetObject", "s3:PutObject"]);
-    expect(actions(web, "s3:GetObject")).toEqual(["arn:aws:s3:::dd-recovery-plan-test/incoming/*"]);
+    expect(web.flatMap((statement) => statement.actions).sort()).toEqual(["s3:GetObject", "s3:GetObject", "s3:PutObject"]);
+    expect(actions(web, "s3:GetObject").sort()).toEqual([
+      "arn:aws:s3:::dd-recovery-plan-test/documents/*",
+      "arn:aws:s3:::dd-recovery-plan-test/incoming/*",
+    ]);
     expect(actions(web, "s3:PutObject").sort()).toEqual([
       "arn:aws:s3:::dd-recovery-plan-test/documents/*",
       "arn:aws:s3:::dd-recovery-plan-test/incoming/*",

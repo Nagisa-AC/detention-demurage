@@ -4,7 +4,7 @@ You apply this. CI plans it and does not apply it.
 
 The account SCP denies `iam:*Provider*` on the free and paid plans of the new sign-up experience, so this configuration does not create an OIDC provider. The web app uses one IAM user, `dd-web`. Revisit Vercel OIDC at M4, when the account moves to advanced features.
 
-`dd-web` has no console login. Its only policy allows `s3:PutObject` on `incoming/*` and `documents/*`, and `s3:GetObject` on `incoming/*`. Terraform does not create the access key, so the secret stays out of state.
+`dd-web` has no console login. Its only policy allows `s3:PutObject` on `incoming/*` and `documents/*`, and `s3:GetObject` on `incoming/*` and `documents/*`. Terraform does not create the access key, so the secret stays out of state.
 
 The bucket allows a browser `PUT` from `upload_origin` only. That origin is `https://detention-demurage.vercel.app`. The allowed headers are `content-length`, `content-type`, and `x-amz-checksum-sha256`. There is no wildcard.
 

@@ -5,6 +5,7 @@ locals {
 }
 
 # Presign PutObject, HeadObject the incoming copy source, and CopyObject onto documents/.
+# GetObject on documents/ lets the review screen stream a stored PDF. No other read.
 # No s3:DeleteObject. A rejected upload expires by lifecycle.
 data "aws_iam_policy_document" "web" {
   statement {
@@ -23,6 +24,13 @@ data "aws_iam_policy_document" "web" {
     effect    = "Allow"
     actions   = ["s3:GetObject"]
     resources = ["${local.bucket_arn}/incoming/*"]
+  }
+
+  statement {
+    sid       = "ReadStoredDocuments"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${local.bucket_arn}/documents/*"]
   }
 }
 

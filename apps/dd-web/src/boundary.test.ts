@@ -38,6 +38,7 @@ describe("dd-web boundary", () => {
       "(signed-in)/cases/page.tsx",
       "(signed-in)/customers/page.tsx",
       "(signed-in)/page.tsx",
+      "(signed-in)/review/[invoiceId]/page.tsx",
       "(signed-in)/review/page.tsx",
     ]);
     for (const file of pages) expect(fs.readFileSync(file, "utf8")).toContain("requireSession(");
@@ -48,6 +49,8 @@ describe("dd-web boundary", () => {
 
     const routes = files.filter((file) => file.endsWith("route.ts"));
     expect(routes.map(rel).sort()).toEqual([
+      "api/pdf-worker/route.ts",
+      "api/review/[customerId]/invoices/[invoiceId]/pdf/route.ts",
       "api/session/route.ts",
       "api/uploads/confirm/route.ts",
       "api/uploads/route.ts",
@@ -61,6 +64,7 @@ describe("dd-web boundary", () => {
     expect(actions.map(rel).sort()).toEqual([
       "(signed-in)/account.ts",
       "(signed-in)/customers/create-customer.ts",
+      "(signed-in)/review/actions.ts",
       "(signed-in)/sign-out.ts",
     ]);
     for (const file of actions) expect(fs.readFileSync(file, "utf8")).toContain("requireSession(");
