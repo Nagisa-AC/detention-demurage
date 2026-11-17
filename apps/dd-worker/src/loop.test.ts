@@ -27,7 +27,10 @@ describe("runOnce", () => {
       log: (line) => logs.push(line),
     });
     expect(outcome).toBe("finished");
+    expect(logs).toEqual(["run run-1 failed", "run run-1 retry"]);
     expect(logs.join("\n")).not.toContain(secret);
+    expect(logs.join("\n")).not.toContain(claimed.customerId);
+    expect(logs.join("\n")).not.toContain(claimed.storageKey);
     expect(JSON.stringify(finished)).not.toContain(secret);
     expect(finished?.pages[0]?.reason).toBe("worker_error");
     expect(finished?.permanent).toBe(false);
@@ -53,5 +56,35 @@ describe("runOnce", () => {
       log: () => undefined,
     });
     expect(permanent).toBe(true);
+  });
+
+  it("prefixes a document line with the processing run id", async () => {
+    const logs: string[] = [];
+    await runOnce({
+      claim: async () => ({
+        id: "run-9",
+        customerId: "cust",
+        documentId: "doc",
+        attempts: 1,
+        leaseToken: "token",
+        storageKey: "documents/cust/file.pdf",
+        sha256: "ab".repeat(32),
+      }),
+      download: async () => new Uint8Array([1]),
+      process: async (_pdf, _hash, log) => {
+        log("document read");
+        return {
+          finish: "ok",
+          modelCalled: false,
+          pages: [],
+          modelVersion: null,
+          promptVersion: null,
+          schemaVersion: null,
+        };
+      },
+      finish: async () => undefined,
+      log: (line) => logs.push(line),
+    });
+    expect(logs).toEqual(["run run-9 document read", "run run-9 finished"]);
   });
 });

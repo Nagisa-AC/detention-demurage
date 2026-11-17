@@ -2,7 +2,7 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 /** One string per page, items joined with no extra spaces, matching the fixture text layer. */
 export async function readPdfPages(pdf: Uint8Array): Promise<string[]> {
-  const task = getDocument({ data: pdf });
+  const task = getDocument({ data: pdf, verbosity: 0 });
   const doc = await task.promise;
   const pages: string[] = [];
   try {

@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
-dnf install -y nodejs
+dnf install -y nodejs24
 install -d -o root -g root -m 0755 /opt/dd-worker
-NODE=$(command -v node)
 cat > /etc/systemd/system/dd-worker.service <<UNIT
 [Unit]
 Description=D and D Recovery worker
@@ -19,7 +18,7 @@ PrivateTmp=yes
 ReadOnlyPaths=/opt/dd-worker
 WorkingDirectory=/opt/dd-worker
 Environment=DD_BUCKET=${bucket}
-ExecStart=$${NODE} /opt/dd-worker/main.mjs
+ExecStart=/usr/bin/node-24 /opt/dd-worker/main.mjs
 Restart=on-failure
 RestartSec=30
 
