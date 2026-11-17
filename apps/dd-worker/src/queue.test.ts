@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { claimNext, finishRun, requeueRun } from "./queue.js";
+import { claimNext, finishRun, loadRunDocument, requeueRun } from "./queue.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const webRoot = path.join(repoRoot, "apps/dd-web");
@@ -59,10 +59,17 @@ describe("extract queue", () => {
     );
     const documentId = document.rows[0]?.id;
     if (documentId === undefined) throw new Error("missing document");
-    await pool.query(
-      `INSERT INTO "ProcessingRun" (customer_id, document_id, kind) VALUES ($1, $2, 'extract')`,
+    const inserted = await pool.query<{ id: string }>(
+      `INSERT INTO "ProcessingRun" (customer_id, document_id, kind) VALUES ($1, $2, 'extract') RETURNING id`,
       [customerId, documentId],
     );
+    const runId = inserted.rows[0]?.id;
+    if (runId === undefined) throw new Error("missing run");
+    expect(await loadRunDocument(pool, runId)).toEqual({
+      storageKey: `documents/${customerId}/${hash}.pdf`,
+      sha256: hash,
+    });
+    expect(await loadRunDocument(pool, "00000000-0000-4000-8000-000000000000")).toBeNull();
 
     const [first, second] = await Promise.all([claimNext(pool, 3600), claimNext(pool, 3600)]);
     const claimed = [first, second].filter((row) => row !== null);

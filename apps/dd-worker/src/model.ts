@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { PageExtraction } from "dd-core";
-import { extract, type ExtractedPage, type ExtractResult } from "dd-extract";
+import { extract, tempDirError, type ExtractedPage, type ExtractResult } from "dd-extract";
+import { InferenceGeoError, ModelOutputError } from "./errors.js";
 import type { GroundPage } from "./process.js";
 
 const CHARGE_FIELDS = ["container", "charge", "charged_from", "charged_to", "days", "rate", "amount"] as const;
@@ -13,13 +14,42 @@ export async function readModelPages(
   pages: readonly number[],
   run: (pdf: Uint8Array, pages: readonly number[], outDir: string) => Promise<ExtractResult> = runAnthropic,
 ): Promise<GroundPage[]> {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-worker-"));
+  const outDir = makeTempDir();
   try {
     const result = await run(pdf, pages, outDir);
-    return result.pages.map(toGround);
-  } finally {
-    fs.rmSync(outDir, { recursive: true, force: true });
+    const grounded = result.pages.map(toGround);
+    removeTempDir(outDir);
+    return grounded;
+  } catch (error) {
+    try {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    } catch {
+      // The processing error is the one the attempt records.
+    }
+    throw error;
   }
+}
+
+function removeTempDir(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (error) {
+    throw tempDirError(error);
+  }
+}
+
+/** One directory per attempt, under the process temp dir, which PrivateTmp maps to a writable /tmp. */
+function makeTempDir(): string {
+  const root = path.resolve(os.tmpdir());
+  let dir: string;
+  try {
+    dir = fs.mkdtempSync(path.join(root, "dd-worker-"));
+  } catch (error) {
+    throw tempDirError(error);
+  }
+  const resolved = path.resolve(dir);
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) throw tempDirError(new Error("outside"));
+  return resolved;
 }
 
 async function runAnthropic(pdf: Uint8Array, pages: readonly number[], outDir: string): Promise<ExtractResult> {
@@ -35,12 +65,21 @@ function toGround(page: ExtractedPage): GroundPage {
     schemaVersion: page.record.schema_version,
   };
   if (page.status === "failed") {
+    const geo = page.record.inference_geo;
+    if (geo !== null && geo !== "us") throw new InferenceGeoError();
     const reason = page.record.reason;
+    if (!isTransportReason(reason)) throw new ModelOutputError();
     const failed: GroundPage = { ...base, status: "failed", values: [] };
     if (reason !== undefined) failed.reason = reason;
     return failed;
   }
   return { ...base, status: "ok", values: valuesOf(page.extraction) };
+}
+
+/** SDK names and HTTP statuses. A sentence is model output, and its text is not kept. */
+function isTransportReason(reason: string | undefined): boolean {
+  if (reason === undefined) return false;
+  return /^[A-Za-z][A-Za-z0-9_.]*$/.test(reason) || /^[A-Za-z][A-Za-z0-9_.]* \d{3}$/.test(reason);
 }
 
 function valuesOf(extraction: PageExtraction): { field: string; text: string }[] {

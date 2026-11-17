@@ -7,6 +7,7 @@ import { ELEMENT_KEYS, fixtureTruthSchema, invoiceExtractionSchema, type Fixture
 import { PDFDocument } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { priceUsage, type Usage } from "./cost.js";
+import { PageLimitError, TempDirError } from "./errors.js";
 import { extract, type PageReader } from "./extract.js";
 import type { ModelResponse } from "./anthropic.js";
 import { buildAnthropicRequest } from "./request.js";
@@ -309,6 +310,57 @@ describe("extract", () => {
       expect(result.pages.map((page) => page.record.page)).toEqual([2]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a document over the page limit before the model", async () => {
+    const doc = await PDFDocument.create();
+    for (let index = 0; index < 31; index += 1) doc.addPage();
+    const pdf = await doc.save();
+    let calls = 0;
+    const dir = tempDir();
+    try {
+      await expect(
+        extract({
+          pdf,
+          outDir: dir,
+          provider: "fake",
+          fake: () => {
+            calls += 1;
+            return reply(validPage());
+          },
+        }),
+      ).rejects.toBeInstanceOf(PageLimitError);
+      expect(calls).toBe(0);
+      expect(fs.readdirSync(dir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("names a temp directory that cannot be created", async () => {
+    const pdf = await blankPdf();
+    const file = path.join(os.tmpdir(), `dd-extract-not-dir-${process.pid}`);
+    fs.writeFileSync(file, "x");
+    try {
+      await expect(
+        extract({
+          pdf,
+          outDir: file,
+          provider: "fake",
+          fake: () => reply(validPage()),
+        }),
+      ).rejects.toMatchObject({ name: "TempDirError", message: "The temporary directory could not be used." });
+      await expect(
+        extract({
+          pdf,
+          outDir: file,
+          provider: "fake",
+          fake: () => reply(validPage()),
+        }),
+      ).rejects.toBeInstanceOf(TempDirError);
+    } finally {
+      fs.rmSync(file, { force: true });
     }
   });
 });

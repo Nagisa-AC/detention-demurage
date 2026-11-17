@@ -1,4 +1,6 @@
+import { PageLimitError, TempDirError } from "dd-extract";
 import { describe, expect, it } from "vitest";
+import { GroundingError, InferenceGeoError, ModelOutputError } from "./errors.js";
 import { runOnce } from "./loop.js";
 import type { ClaimedRun } from "./queue.js";
 import type { ProcessResult } from "./process.js";
@@ -71,6 +73,35 @@ describe("runOnce", () => {
     expect(logs.join("\n")).not.toContain(secret);
     expect(finished?.pages[0]?.reason).toBe("process Error ETIMEDOUT");
     expect(finished?.permanent).toBe(false);
+  });
+
+  it("logs our own process failures by name and omits the message", async () => {
+    const errors = [
+      new ModelOutputError(),
+      new InferenceGeoError(),
+      new GroundingError(),
+      new PageLimitError(),
+      new TempDirError(),
+      new TempDirError("EROFS"),
+    ];
+    for (const error of errors) {
+      const logs: string[] = [];
+      let reason = "";
+      await runOnce({
+        claim: async () => claimedRun("typed", 1),
+        download: async () => new Uint8Array([1]),
+        process: () => Promise.reject(error),
+        finish: async (_claimed, result) => {
+          reason = result.pages[0]?.reason ?? "";
+        },
+        log: (line) => logs.push(line),
+      });
+      const code = "code" in error && typeof error.code === "string" ? ` ${error.code}` : "";
+      const line = `run typed failed process ${error.name}${code}`;
+      expect(logs[0]).toBe(line);
+      expect(reason).toBe(`process ${error.name}${code}`);
+      expect(logs.join("\n")).not.toContain(error.message);
+    }
   });
 
   it("logs a finish failure as the stage, name, and code", async () => {

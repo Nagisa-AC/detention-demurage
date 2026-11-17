@@ -76,6 +76,22 @@ export async function claimNext(pool: Pool, leaseSeconds: number): Promise<Claim
   }
 }
 
+export async function loadRunDocument(
+  pool: Pool,
+  runId: string,
+): Promise<{ storageKey: string; sha256: string } | null> {
+  const result = await pool.query<{ storage_key: string | null; sha256: string }>(
+    `SELECT d.storage_key, d.sha256
+     FROM "ProcessingRun" r
+     JOIN "Document" d ON d.id = r.document_id
+     WHERE r.id = $1::uuid`,
+    [runId],
+  );
+  const row = result.rows[0];
+  if (row === undefined || row.storage_key === null) return null;
+  return { storageKey: row.storage_key, sha256: row.sha256 };
+}
+
 export async function requeueRun(pool: Pool, runId: string): Promise<boolean> {
   const updated = await pool.query(
     `UPDATE "ProcessingRun"

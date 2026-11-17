@@ -8,11 +8,12 @@ import { extract } from "dd-extract";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pg from "pg";
 import { syntheticAllowlist } from "./allow.js";
+import { diagnoseRun, formatFailure } from "./diagnose.js";
 import { runOnce } from "./loop.js";
 import { readModelPages } from "./model.js";
 import { readPdfPages } from "./pdf-text.js";
 import { processDocument, sha256Hex } from "./process.js";
-import { claimNext, finishRun, requeueRun } from "./queue.js";
+import { claimNext, finishRun, loadRunDocument, requeueRun } from "./queue.js";
 import { assertDatabaseTls, DATABASE_PARAMETER, readWorkerSecrets } from "./ssm.js";
 
 const REGION = "us-east-2";
@@ -20,7 +21,7 @@ const REGION = "us-east-2";
 export async function main(): Promise<void> {
   // DynamicUser has no home directory. The AWS SDK calls os.homedir() while loading
   // shared config, and that throws ENOENT. /tmp is private to this service.
-  ensureHome();
+  ensureRuntimeEnv();
   const credentials = fromInstanceMetadata();
   const ssm = new SSMClient({ region: REGION, credentials });
   const secrets = await readWorkerSecrets(async (name) => {
@@ -87,6 +88,8 @@ if (entry !== undefined && path.resolve(entry) === fileURLToPath(import.meta.url
     void checkPdf(process.argv[3]).then((code) => process.exit(code));
   } else if (command === "--requeue") {
     void requeue(process.argv[3] ?? "");
+  } else if (command === "--diagnose") {
+    void diagnose(process.argv[3] ?? "");
   } else {
     void main();
   }
@@ -127,7 +130,7 @@ async function requeue(runId: string): Promise<void> {
     console.error("Run id must be a UUID.");
     process.exit(1);
   }
-  ensureHome();
+  ensureRuntimeEnv();
   const credentials = fromInstanceMetadata();
   const ssm = new SSMClient({ region: REGION, credentials });
   let databaseUrl = "";
@@ -172,8 +175,69 @@ function requireAppDatabase(databaseUrl: string): void {
   if (username !== "dd_app") throw new Error("The database URL must connect as dd_app.");
 }
 
-function ensureHome(): void {
+async function diagnose(runId: string): Promise<void> {
+  ensureRuntimeEnv();
+  const credentials = fromInstanceMetadata();
+  const ssm = new SSMClient({ region: REGION, credentials });
+  let databaseUrl = "";
+  let anthropicKey = "";
+  try {
+    const secrets = await readWorkerSecrets(async (name) => {
+      const out = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
+      const value = out.Parameter?.Value;
+      if (value === undefined || value === "") throw new Error("A worker parameter is missing.");
+      return value;
+    });
+    databaseUrl = secrets.databaseUrl;
+    anthropicKey = secrets.anthropicKey;
+    requireAppDatabase(databaseUrl);
+  } catch (error) {
+    console.log(formatFailure(error, [databaseUrl, anthropicKey]));
+    process.exit(1);
+  }
+  process.env.ANTHROPIC_API_KEY = anthropicKey;
+  const bucket = process.env.DD_BUCKET;
+  if (bucket === undefined || bucket === "") {
+    console.log("DD_BUCKET is not set.");
+    process.exit(1);
+  }
+  const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
+  const s3 = new S3Client({ region: REGION, credentials });
+  const hidden = [databaseUrl, anthropicKey];
+  let code = 1;
+  try {
+    code = await diagnoseRun({
+      runId,
+      allow: syntheticAllowlist(),
+      secrets: hidden,
+      load: (id) => loadRunDocument(pool, id),
+      download: async (key) => {
+        const out = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        const bytes = await out.Body?.transformToByteArray();
+        if (bytes === undefined) throw new Error("The document object is empty.");
+        return bytes;
+      },
+      process: (pdf, declaredHash) =>
+        processDocument({
+          pdf,
+          declaredHash,
+          allow: syntheticAllowlist(),
+          readPages: readPdfPages,
+          extract: (file, pages) => readModelPages(file, pages),
+        }),
+      write: (line) => console.log(line),
+    });
+  } catch (error) {
+    console.log(formatFailure(error, hidden));
+  } finally {
+    await pool.end();
+  }
+  process.exit(code);
+}
+
+function ensureRuntimeEnv(): void {
   if (process.env.HOME === undefined || process.env.HOME === "") process.env.HOME = "/tmp";
+  if (process.env.TMPDIR === undefined || process.env.TMPDIR === "") process.env.TMPDIR = "/tmp";
 }
 
 function errorToken(error: unknown): string {

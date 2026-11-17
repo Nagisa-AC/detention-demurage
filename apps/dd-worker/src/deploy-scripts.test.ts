@@ -10,7 +10,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 describe("worker scripts", () => {
   it("sends the remote files and reads the sha from dist", () => {
     const dir = path.join(repoRoot, "scripts");
-    for (const name of ["worker-install.sh", "worker-rollback.sh", "worker-journal.sh", "worker-requeue.sh"]) {
+    for (const name of ["worker-install.sh", "worker-rollback.sh", "worker-journal.sh", "worker-requeue.sh", "worker-diagnose.sh"]) {
       const text = fs.readFileSync(path.join(dir, name), "utf8");
       expect(text.startsWith("#!/bin/bash\nset -euo pipefail\n"), name).toBe(true);
     }
@@ -44,6 +44,30 @@ describe("worker scripts", () => {
     const remoteRequeue = fs.readFileSync(path.join(dir, "worker-requeue.sh"), "utf8");
     expect(remoteRequeue).toContain("--requeue");
     expect(remoteRequeue).not.toContain("postgres://");
+    const diagnose = fs.readFileSync(path.join(dir, "diagnose-run.sh"), "utf8");
+    expect(diagnose).toContain("scripts/worker-diagnose.sh");
+    expect(diagnose).toContain("RUN_ID");
+    expect(diagnose).not.toContain("postgres://");
+    expect(diagnose).not.toContain("get-parameter");
+    const remoteDiagnose = fs.readFileSync(path.join(dir, "worker-diagnose.sh"), "utf8");
+    expect(remoteDiagnose).toContain("--diagnose");
+    expect(remoteDiagnose).toContain("systemd-run");
+    expect(remoteDiagnose).toContain("--pipe");
+    expect(remoteDiagnose).not.toContain("journalctl");
+    expect(remoteDiagnose).not.toContain("postgres://");
+    expect(remoteDiagnose).not.toContain("get-parameter");
+    for (const setting of [
+      "DynamicUser=yes",
+      "NoNewPrivileges=yes",
+      "ProtectSystem=strict",
+      "ProtectHome=yes",
+      "PrivateTmp=yes",
+      "ReadOnlyPaths=/opt/dd-worker",
+      "MemoryMax=768M",
+      "WorkingDirectory=/opt/dd-worker",
+    ]) {
+      expect(remoteDiagnose, setting).toContain(setting);
+    }
     const rollback = fs.readFileSync(path.join(dir, "rollback-worker.sh"), "utf8");
     expect(rollback).toContain("scripts/worker-rollback.sh");
     expect(rollback).not.toContain("systemctl");
@@ -70,5 +94,7 @@ describe("worker bundle", () => {
     expect(bundle).not.toContain("check.mjs");
     expect(bundle).toContain("--check-pdf");
     expect(main).toContain("./pdf.worker.mjs");
+    expect(main).toContain("--diagnose");
+    expect(main).toContain("refused not_synthetic");
   }, 60_000);
 });

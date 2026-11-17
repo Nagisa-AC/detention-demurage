@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { ELEMENT_KEYS } from "dd-core";
+import { MAX_PAGES, PageLimitError } from "dd-extract";
+import { GroundingError } from "./errors.js";
 import { foldText, groundValue } from "./ground.js";
 
 const HEADERS = ["invoice_number", "billing_party", "billed_party", "currency"] as const;
@@ -48,6 +50,7 @@ export async function processDocument(input: {
   if (!input.allow.has(actual)) return skipped("not_synthetic", input.log);
 
   const texts = await input.readPages(input.pdf);
+  if (texts.length > MAX_PAGES) throw new PageLimitError();
   const withText: number[] = [];
   const stored: StoredPage[] = [];
   texts.forEach((text, index) => {
@@ -70,8 +73,14 @@ export async function processDocument(input: {
   const extracted = await input.extract(input.pdf, withText);
   input.log?.("document read");
   for (const page of extracted) {
-    const pageText = texts[page.page - 1] ?? "";
-    stored.push(storePage(page, pageText));
+    const pageText = texts[page.page - 1];
+    if (pageText === undefined) throw new GroundingError();
+    try {
+      stored.push(storePage(page, pageText));
+    } catch (error) {
+      if (error instanceof GroundingError) throw error;
+      throw new GroundingError(error);
+    }
   }
   stored.sort((left, right) => left.page - right.page);
   const failed = stored.some((page) => page.status === "failed");
