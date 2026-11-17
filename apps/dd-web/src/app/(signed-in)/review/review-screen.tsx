@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatAmount } from "../../../review-format";
+import { elementStateSummary, formatAmount } from "../../../review-format";
 import { approveInvoice } from "./actions";
 import { PdfPane } from "./pdf-pane";
 import { DecisionBar } from "./decision-bar";
@@ -17,6 +17,12 @@ export type ScreenElement = {
   storedState: string;
   grounded: boolean | null;
 };
+
+function shownState(element: ScreenElement): string {
+  if (element.pill === "Confirmed missing") return "confirmed_absent";
+  if (element.pill === "Export only" || element.storedState === "not_applicable") return "not_applicable";
+  return element.storedState;
+}
 
 export type ScreenLine = {
   id: string;
@@ -67,7 +73,7 @@ export function ReviewScreen({
   const [message, setMessage] = useState("");
   const selected = elements.find((element) => element.key === selectedKey) ?? null;
   const query = selected?.text ?? "";
-  const settled = elements.length - openCount;
+  const summary = elementStateSummary(elements.map(shownState));
 
   function choose(element: ScreenElement): void {
     setSelectedKey(element.key);
@@ -115,9 +121,7 @@ export function ReviewScreen({
           <section className="elements" aria-label="Required elements">
             <div className="elements-head">
               <h2>20 required elements</h2>
-              <span>
-                {settled} present · {openCount} need a decision
-              </span>
+              <span>{summary}</span>
             </div>
             {elements.map((element) => (
               <button

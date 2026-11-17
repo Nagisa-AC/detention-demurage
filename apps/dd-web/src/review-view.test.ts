@@ -1,4 +1,5 @@
 import { ELEMENT_KEYS, savedDecisionSchema, type ElementKey } from "dd-core";
+import { elementStateSummary } from "./review-format";
 import { describe, expect, it } from "vitest";
 import {
   approvalDecision,
@@ -15,6 +16,21 @@ import {
 
 const HASH = "ab".repeat(32);
 const AT = "2026-11-17T20:00:00.000Z";
+
+describe("element state summary", () => {
+  it("counts by state and never treats export only as present", () => {
+    const present = (count: number) => Array.from({ length: count }, () => "present");
+    const missing = Array.from({ length: 4 }, () => "suggested_absent");
+    expect(elementStateSummary([...present(16), ...missing])).toBe("16 present · 4 suggested missing");
+    expect(elementStateSummary([...present(19), "not_applicable"])).toBe("19 present · 1 export only");
+    expect(elementStateSummary([...present(15), ...missing, "not_applicable"])).toBe(
+      "15 present · 4 suggested missing · 1 export only",
+    );
+    expect(elementStateSummary(["present", "unreadable", "confirmed_absent"])).toBe(
+      "1 present · 1 unreadable · 1 confirmed missing",
+    );
+  });
+});
 
 describe("review pills", () => {
   it("maps every state to its pill and lists elements that need a decision first", () => {
