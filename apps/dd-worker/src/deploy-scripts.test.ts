@@ -47,5 +47,8 @@ describe("worker bundle", () => {
     expect(sha).toBe(createHash("sha256").update(tar).digest("hex"));
     const names = execFileSync("tar", ["-tf", tarPath], { encoding: "utf8" }).trim().split("\n").sort();
     expect(names).toEqual(["main.mjs", "pdf.worker.mjs"]);
+    const main = execFileSync("tar", ["-xOf", tarPath, "main.mjs"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    expect(main.startsWith('import { createRequire as __ddCreateRequire } from "node:module"; const require = __ddCreateRequire(import.meta.url);')).toBe(true);
+    expect(fs.readFileSync(path.join(repoRoot, "apps/dd-worker/bundle.mjs"), "utf8")).not.toContain("require-shim");
   }, 60_000);
 });
