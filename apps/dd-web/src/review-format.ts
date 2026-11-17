@@ -52,6 +52,31 @@ export function matchingIndexes(parts: readonly string[], query: string): number
   return [...hits];
 }
 
+const STATE_LABELS = [
+  ["present", "present"],
+  ["suggested_absent", "suggested missing"],
+  ["unreadable", "unreadable"],
+  ["confirmed_absent", "confirmed missing"],
+  ["not_applicable", "export only"],
+] as const;
+
+/**
+ * Counts shown element states. not_applicable is "export only" and is never present.
+ * A present value the model did not ground is still present; the header badge covers that.
+ */
+export function elementStateSummary(states: readonly string[]): string {
+  const counts = new Map<string, number>();
+  for (const state of states) {
+    const known = STATE_LABELS.some(([key]) => key === state);
+    const key = known ? state : "present";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return STATE_LABELS.flatMap(([key, label]) => {
+    const count = counts.get(key) ?? 0;
+    return count === 0 ? [] : [`${count} ${label}`];
+  }).join(" · ");
+}
+
 function centsOf(amount: string): number | null {
   const match = /^(-?)(\d+)\.(\d{2})$/.exec(amount.trim());
   if (match === null) return null;
