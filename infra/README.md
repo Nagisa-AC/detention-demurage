@@ -6,6 +6,8 @@ The account SCP denies `iam:*Provider*` on the free and paid plans of the new si
 
 `dd-web` has no console login. Its only policy allows `s3:PutObject` on `incoming/*` and `documents/*`, and `s3:GetObject` on `incoming/*`. Terraform does not create the access key, so the secret stays out of state.
 
+The bucket allows a browser `PUT` from `upload_origin` only. That origin is `https://detention-demurage.vercel.app`. The allowed headers are `content-length`, `content-type`, and `x-amz-checksum-sha256`. There is no wildcard.
+
 After `terraform apply`, create the key:
 
 ```sh

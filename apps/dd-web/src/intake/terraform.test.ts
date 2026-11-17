@@ -44,6 +44,7 @@ beforeAll(() => {
       "-no-color",
       `-out=${planFile}`,
       "-var=bucket_name=dd-recovery-plan-test",
+      "-var=upload_origin=https://detention-demurage.vercel.app",
       "-var=vpc_id=vpc-0123456789abcdef0",
       "-var=subnet_id=subnet-0123456789abcdef0",
       "-var=ami_id=ami-0123456789abcdef0",
@@ -64,6 +65,21 @@ describe("terraform plan", () => {
     expect(block(rule, "expiration").days).toBe(1);
     expect(block(rule, "noncurrent_version_expiration").noncurrent_days).toBe(1);
     expect(block(rule, "abort_incomplete_multipart_upload").days_after_initiation).toBe(1);
+  });
+
+  it("allows one exact origin to PUT with the signed headers", () => {
+    const cors = resource("aws_s3_bucket_cors_configuration", "documents");
+    const rule = first(cors.cors_rule);
+    expect(rule.allowed_origins).toEqual(["https://detention-demurage.vercel.app"]);
+    expect(rule.allowed_methods).toEqual(["PUT"]);
+    expect(rule.allowed_headers).toEqual(["content-length", "content-type", "x-amz-checksum-sha256"]);
+    expect(rule.max_age_seconds).toBe(3000);
+    expect(rule.expose_headers ?? []).toEqual([]);
+    const text = JSON.stringify(rule);
+    expect(text).not.toContain("*");
+    expect(text).not.toContain("GET");
+    expect(text).not.toContain("POST");
+    expect(text).not.toContain("DELETE");
   });
 
   it("keeps the bucket private, encrypted, versioned, and TLS-only", () => {
