@@ -141,7 +141,7 @@ describe("terraform plan", () => {
 
   it("gives the worker a public address, no inbound rule, and no secret in user data", () => {
     const instance = resource("aws_instance", "worker");
-    expect(instance.instance_type).toBe("t4g.nano");
+    expect(instance.instance_type).toBe("t4g.micro");
     expect(instance.associate_public_ip_address).toBe(true);
     expect(instance.key_name ?? null).toBeNull();
     const group = resource("aws_security_group", "worker");
@@ -154,7 +154,15 @@ describe("terraform plan", () => {
     expect(rendered).toContain("DD_BUCKET=dd-recovery-plan-test");
     expect(rendered).toContain("dnf install -y nodejs24");
     expect(rendered).toContain("ExecStart=/usr/bin/node-24 /opt/dd-worker/main.mjs");
+    expect(rendered).toContain("MemoryMax=768M");
+    expect(rendered).toContain("sleep 10");
     expect(rendered).not.toContain("command -v node");
+    const unitAt = rendered.indexOf("cat > /etc/systemd/system/dd-worker.service");
+    const reloadAt = rendered.indexOf("systemctl daemon-reload");
+    const installAt = rendered.indexOf("dnf install -y nodejs24");
+    expect(unitAt).toBeGreaterThan(-1);
+    expect(unitAt).toBeLessThan(reloadAt);
+    expect(reloadAt).toBeLessThan(installAt);
     for (const forbidden of ["postgres://", "sk-ant", "AKIA", "BEGIN OPENSSH", "BEGIN RSA", "password="]) {
       expect(rendered, forbidden).not.toContain(forbidden);
     }

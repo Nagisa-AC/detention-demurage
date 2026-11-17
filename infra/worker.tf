@@ -26,7 +26,7 @@ resource "aws_security_group" "worker" {
 
 resource "aws_instance" "worker" {
   ami                         = var.ami_id
-  instance_type               = "t4g.nano"
+  instance_type               = "t4g.micro"
   subnet_id                   = var.subnet_id
   vpc_security_group_ids      = [aws_security_group.worker.id]
   iam_instance_profile        = aws_iam_instance_profile.worker.name

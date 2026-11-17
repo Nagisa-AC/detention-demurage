@@ -32,7 +32,7 @@ The worker still reads `/dd/worker/database-url` and `/dd/worker/anthropic-api-k
 
 ## Worker program
 
-`pnpm worker:bundle` writes `dist/dd-worker.tar` and `dist/dd-worker.sha256`. The tarball is `main.mjs` and `pdf.worker.mjs`. The unit runs `/usr/bin/node-24`, which is the `nodejs24` package. Applying the user-data change replaces the instance, because `user_data_replace_on_change` is set. The current instance has no program on it. After apply, the instance id is `terraform output -raw worker_instance_id`.
+The worker is one `t4g.micro` (1 GB). The running total is about $32 a month. `pnpm worker:bundle` writes `dist/dd-worker.tar` and `dist/dd-worker.sha256`. The tarball is `main.mjs` and `pdf.worker.mjs`. The unit runs `/usr/bin/node-24`, which is the `nodejs24` package, and `MemoryMax` is 768M. User data writes that unit and reloads systemd before it installs Node, and it retries the install three times. Applying a user-data change replaces the instance, because `user_data_replace_on_change` is set. After apply, the instance id is `terraform output -raw worker_instance_id`.
 
 The worker role can `s3:GetObject` on `deploy/*`. Upload and install from a clean tree:
 
