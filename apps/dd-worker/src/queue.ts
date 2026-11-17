@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { StoredPage } from "./process.js";
+import type { SavedRead } from "./read.js";
 
 export type ClaimedRun = {
   id: string;
@@ -111,31 +112,132 @@ export async function finishRun(
   claimed: ClaimedRun,
   input: {
     permanent: boolean;
+    finish?: "ok" | "failed";
     pages: StoredPage[];
+    read?: SavedRead;
     modelVersion: string | null;
     promptVersion: string | null;
     schemaVersion: string | null;
   },
 ): Promise<void> {
-  const updated = await pool.query(
-    `UPDATE "ProcessingRun"
-     SET finished_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
-         lease_token = NULL,
-         leased_at = NULL,
-         page_records = $4::jsonb,
-         model_version = $5,
-         prompt_version = $6,
-         schema_version = $7
-     WHERE id = $1::uuid AND lease_token = $2::uuid`,
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query<{ invoice_id: string | null }>(
+      `SELECT invoice_id FROM "ProcessingRun" WHERE id = $1::uuid AND lease_token = $2::uuid FOR UPDATE`,
+      [claimed.id, claimed.leaseToken],
+    );
+    const row = locked.rows[0];
+    if (row === undefined) throw new Error("The run lease was lost.");
+    let invoiceId = row.invoice_id;
+    if (input.finish === "ok" && input.read !== undefined && invoiceId === null) {
+      invoiceId = await insertRead(client, claimed, input.read);
+    }
+    const updated = await client.query(
+      `UPDATE "ProcessingRun"
+       SET finished_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
+           lease_token = NULL,
+           leased_at = NULL,
+           page_records = $4::jsonb,
+           model_version = $5,
+           prompt_version = $6,
+           schema_version = $7,
+           invoice_id = $8::uuid
+       WHERE id = $1::uuid AND lease_token = $2::uuid`,
+      [
+        claimed.id,
+        claimed.leaseToken,
+        input.permanent,
+        JSON.stringify(input.pages),
+        input.modelVersion,
+        input.promptVersion,
+        input.schemaVersion,
+        invoiceId,
+      ],
+    );
+    if ((updated.rowCount ?? 0) === 0) throw new Error("The run lease was lost.");
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function insertRead(client: PoolClient, claimed: ClaimedRun, read: SavedRead): Promise<string> {
+  const invoice = await client.query<{ id: string }>(
+    `INSERT INTO "Invoice" (
+       customer_id, document_id, invoice_number, billing_party, billed_party,
+       currency, invoice_date, due_date, page_count
+     )
+     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::date, $8::date, $9)
+     RETURNING id`,
     [
-      claimed.id,
-      claimed.leaseToken,
-      input.permanent,
-      JSON.stringify(input.pages),
-      input.modelVersion,
-      input.promptVersion,
-      input.schemaVersion,
+      claimed.customerId,
+      claimed.documentId,
+      read.invoiceNumber,
+      read.billingParty,
+      read.billedParty,
+      read.currency,
+      read.invoiceDate,
+      read.dueDate,
+      read.pageCount,
     ],
   );
-  if ((updated.rowCount ?? 0) === 0) throw new Error("The run lease was lost.");
+  const invoiceId = invoice.rows[0]?.id;
+  if (invoiceId === undefined) throw new Error("The invoice was not saved.");
+  for (const element of read.elements) {
+    await client.query(
+      `INSERT INTO "ElementValue" (
+         customer_id, invoice_id, element_key, state, text, value, page,
+         region_x, region_y, region_w, region_h, grounded
+       )
+       VALUES (
+         $1::uuid, $2::uuid, $3, $4, $5, $6, $7,
+         $8::numeric, $9::numeric, $10::numeric, $11::numeric, $12
+       )`,
+      [
+        claimed.customerId,
+        invoiceId,
+        element.key,
+        element.state,
+        element.text,
+        element.value,
+        element.page,
+        element.region?.x ?? null,
+        element.region?.y ?? null,
+        element.region?.w ?? null,
+        element.region?.h ?? null,
+        element.grounded,
+      ],
+    );
+  }
+  for (const line of read.lines) {
+    await client.query(
+      `INSERT INTO "ChargeLine" (
+         customer_id, invoice_id, line_id, container, charge,
+         charged_from, charged_to, days, rate, amount, currency, grounded
+       )
+       VALUES (
+         $1::uuid, $2::uuid, $3, $4, $5,
+         $6::date, $7::date, $8, $9::numeric, $10::numeric, $11, $12
+       )`,
+      [
+        claimed.customerId,
+        invoiceId,
+        line.lineId,
+        line.container,
+        line.charge,
+        line.chargedFrom,
+        line.chargedTo,
+        line.days,
+        line.rate,
+        line.amount,
+        line.currency,
+        line.grounded,
+      ],
+    );
+  }
+  return invoiceId;
 }

@@ -1,6 +1,6 @@
 import { PageLimitError, TempDirError } from "dd-extract";
 import { describe, expect, it } from "vitest";
-import { GroundingError, InferenceGeoError, ModelOutputError } from "./errors.js";
+import { GroundingError, InferenceGeoError, ModelOutputError, NormalizeError, StitchFailure } from "./errors.js";
 import { runOnce } from "./loop.js";
 import type { ClaimedRun } from "./queue.js";
 import type { ProcessResult } from "./process.js";
@@ -83,6 +83,8 @@ describe("runOnce", () => {
       new PageLimitError(),
       new TempDirError(),
       new TempDirError("EROFS"),
+      new StitchFailure(),
+      new NormalizeError(),
     ];
     for (const error of errors) {
       const logs: string[] = [];

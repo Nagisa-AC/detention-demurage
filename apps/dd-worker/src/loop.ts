@@ -1,3 +1,4 @@
+import { NormalizeError, StitchFailure } from "./errors.js";
 import type { ClaimedRun } from "./queue.js";
 import type { ProcessResult, StoredPage } from "./process.js";
 
@@ -15,14 +16,16 @@ export async function runOnce(deps: {
   const log = (line: string) => deps.log(`run ${claimed.id} ${line}`);
   let stage: Stage = "download";
   let result: ProcessResult;
+  let terminal = false;
   try {
     const pdf = await deps.download(claimed.storageKey);
     stage = "process";
     result = await deps.process(pdf, claimed.sha256, log);
   } catch (error) {
+    terminal = error instanceof StitchFailure || error instanceof NormalizeError;
     result = failedResult(stage, error, log);
   }
-  const permanent = result.finish === "ok" || claimed.attempts >= 3;
+  const permanent = result.finish === "ok" || claimed.attempts >= 3 || terminal;
   try {
     await deps.finish(claimed, { ...result, permanent });
   } catch (error) {

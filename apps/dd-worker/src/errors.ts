@@ -18,3 +18,17 @@ export class GroundingError extends Error {
     this.name = "GroundingError";
   }
 }
+
+export class StitchFailure extends Error {
+  constructor() {
+    super("The pages could not be stitched.");
+    this.name = "StitchFailure";
+  }
+}
+
+export class NormalizeError extends Error {
+  constructor() {
+    super("The invoice could not be normalized.");
+    this.name = "NormalizeError";
+  }
+}
