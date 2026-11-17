@@ -8,9 +8,10 @@ export async function readPdfPages(pdf: Uint8Array): Promise<string[]> {
   const beside = new URL("./pdf.worker.mjs", import.meta.url);
   if (existsSync(fileURLToPath(beside))) GlobalWorkerOptions.workerSrc = beside.href;
   const task = getDocument({ data: pdf, verbosity: 0 });
-  const doc = await task.promise;
-  const pages: string[] = [];
+  let doc: Awaited<typeof task.promise> | undefined;
   try {
+    doc = await task.promise;
+    const pages: string[] = [];
     for (let number = 1; number <= doc.numPages; number += 1) {
       const page = await doc.getPage(number);
       const content = await page.getTextContent();
@@ -18,9 +19,13 @@ export async function readPdfPages(pdf: Uint8Array): Promise<string[]> {
       pages.push(text);
       page.cleanup();
     }
+    return pages;
   } finally {
-    await doc.cleanup();
-    await task.destroy();
+    // Destroy even when the read throws, so the next attempt does not see a pending worker.
+    try {
+      await doc?.cleanup();
+    } finally {
+      await task.destroy();
+    }
   }
-  return pages;
 }

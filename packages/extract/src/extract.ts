@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { PageExtraction } from "dd-core";
 import { readAnthropicPage, type ModelResponse } from "./anthropic.js";
+import { TempDirError, tempDirError } from "./errors.js";
 import { addUsage, emptyUsage, priceUsage, type Usage } from "./cost.js";
 import { mapModelText } from "./map.js";
 import { splitPdf } from "./pdf.js";
@@ -62,12 +63,13 @@ export type ExtractOptions = {
  * Anthropic is called only when `provider` is `"anthropic"`.
  */
 export async function extract(options: ExtractOptions): Promise<ExtractResult> {
-  if (options.outDir.trim() === "") throw new Error("outDir is required.");
+  if (options.outDir.trim() === "") throw new TempDirError();
   const model = options.model ?? DEFAULT_MODEL;
   const effort = options.effort ?? DEFAULT_EFFORT;
   if (!isEffort(effort)) throw new Error("effort is not a supported level.");
   const read = reader(options);
   const pages = await splitPdf(options.pdf);
+  ensureDir(options.outDir);
   const only = options.onlyPages;
   const allowed = only === undefined ? null : new Set(only);
   const result: ExtractedPage[] = [];
@@ -78,8 +80,7 @@ export async function extract(options: ExtractOptions): Promise<ExtractResult> {
     if (pdf === undefined) continue;
     result.push(await readPage(read, { pdf, pageNumber, model, effort, outDir: options.outDir }));
   }
-  fs.mkdirSync(options.outDir, { recursive: true });
-  fs.writeFileSync(
+  writeText(
     path.join(options.outDir, "usage.json"),
     `${JSON.stringify(result.map((page) => page.record), null, 2)}\n`,
   );
@@ -196,13 +197,29 @@ function transportReason(error: unknown): string {
   return "request_failed";
 }
 
+function ensureDir(dir: string): void {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (error) {
+    throw tempDirError(error);
+  }
+}
+
+function writeText(file: string, text: string): void {
+  try {
+    fs.writeFileSync(file, text);
+  } catch (error) {
+    throw tempDirError(error);
+  }
+}
+
 function writePage(outDir: string, record: PageRecord, attempts: string[]): void {
   const dir = path.join(outDir, "pages", String(record.page).padStart(3, "0"));
-  fs.mkdirSync(dir, { recursive: true });
+  ensureDir(dir);
   attempts.forEach((text, index) => {
-    fs.writeFileSync(path.join(dir, `attempt-${index + 1}.txt`), text);
+    writeText(path.join(dir, `attempt-${index + 1}.txt`), text);
   });
-  fs.writeFileSync(path.join(dir, "record.json"), `${JSON.stringify(record, null, 2)}\n`);
+  writeText(path.join(dir, "record.json"), `${JSON.stringify(record, null, 2)}\n`);
 }
 
 function elapsed(started: number): number {

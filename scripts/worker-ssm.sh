@@ -2,7 +2,7 @@
 # Shared by the Mac-side worker scripts. Source this file; do not run it.
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  echo "Source this file from deploy-worker.sh, worker-logs.sh, rollback-worker.sh, or requeue-run.sh." >&2
+  echo "Source this file from deploy-worker.sh, worker-logs.sh, rollback-worker.sh, requeue-run.sh, or diagnose-run.sh." >&2
   exit 1
 fi
 

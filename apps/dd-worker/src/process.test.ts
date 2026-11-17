@@ -2,6 +2,16 @@ import { ELEMENT_KEYS } from "dd-core";
 import { describe, expect, it } from "vitest";
 import { processDocument, sha256Hex, type GroundPage } from "./process.js";
 
+const page = (number: number): GroundPage => ({
+  page: number,
+  status: "ok",
+  attempts: 1,
+  model: "fake",
+  promptVersion: "1",
+  schemaVersion: "1",
+  values: [],
+});
+
 const SECRET = "marked-secret-value";
 
 describe("processDocument", () => {
@@ -110,5 +120,39 @@ describe("processDocument", () => {
     const page = result.pages.find((item) => item.page === 2);
     expect(page?.ungrounded).toContain("invoice_number");
     expect(JSON.stringify(result)).not.toContain("ONLYONPAGEONE");
+  });
+
+  it("refuses a document over the page limit before the model", async () => {
+    const pdf = new Uint8Array([1]);
+    const hash = sha256Hex(pdf);
+    let called = false;
+    await expect(
+      processDocument({
+        pdf,
+        declaredHash: hash,
+        allow: new Set([hash]),
+        readPages: async () => Array.from({ length: 31 }, () => "page text"),
+        extract: () => {
+          called = true;
+          return Promise.resolve([]);
+        },
+      }),
+    ).rejects.toMatchObject({ name: "PageLimitError", message: "The document has too many pages." });
+    expect(called).toBe(false);
+  });
+
+  it("names a model page that is outside the document", async () => {
+    const pdf = new Uint8Array([1]);
+    const hash = sha256Hex(pdf);
+    const secret = "only-on-the-real-page";
+    await expect(
+      processDocument({
+        pdf,
+        declaredHash: hash,
+        allow: new Set([hash]),
+        readPages: async () => [secret],
+        extract: async () => [page(4)],
+      }),
+    ).rejects.toMatchObject({ name: "GroundingError", message: "A page could not be grounded." });
   });
 });
