@@ -1,6 +1,6 @@
 export const packageId = "dd-core";
 
-export { CustomerConfigError, customerConfigSchema, loadCustomerConfig } from "./config.js";
+export { CustomerConfigError, customerConfigSchema, loadCustomerConfig, parseCustomerConfig } from "./config.js";
 export type { ConfigProblem, CustomerConfig } from "./config.js";
 
 export { addDays, dayCount, isUnreadable, parseDate, unreadable } from "./normalize/dates.js";

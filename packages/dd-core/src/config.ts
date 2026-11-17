@@ -221,41 +221,49 @@ export function loadCustomerConfig(filePath: string): CustomerConfig {
     const message = code === "ENOENT" ? "file not found" : "could not be read";
     throw new CustomerConfigError(filePath, [{ path: "document", message }]);
   }
+  return parseCustomerConfig(text, filePath);
+}
 
+/** Parse customer YAML text with customerConfigSchema. `source` is the name in each error. */
+export function parseCustomerConfig(text: string, source: string): CustomerConfig {
   let document: unknown;
   try {
     // Core schema keeps unquoted dates and decimal strings as strings.
     document = parse(text, { schema: "core" });
   } catch {
-    throw new CustomerConfigError(filePath, [{ path: "document", message: "is not valid YAML" }]);
+    throw new CustomerConfigError(source, [{ path: "document", message: "is not valid YAML" }]);
   }
   if (typeof document !== "object" || document === null || Array.isArray(document)) {
-    throw new CustomerConfigError(filePath, [{ path: "document", message: "must be a mapping" }]);
+    throw new CustomerConfigError(source, [{ path: "document", message: "must be a mapping" }]);
   }
 
   const parsed = customerConfigSchema.safeParse(document);
   if (!parsed.success) {
-    const problems = parsed.error.issues.flatMap((issue): ConfigProblem[] => {
-      if (issue.code === "unrecognized_keys") {
-        const prefix = issue.path.map(String).join(".");
-        return issue.keys.map((key) => ({
-          path: prefix.length === 0 ? key : `${prefix}.${key}`,
-          message: "is not a field",
-        }));
-      }
-      return [
-        {
-          path: issue.path.length === 0 ? "document" : issue.path.map(String).join("."),
-          message: issue.message,
-        },
-      ];
-    });
+    const problems = schemaProblems(parsed.error.issues);
     throw new CustomerConfigError(
-      filePath,
+      source,
       problems.length > 0 ? problems : [{ path: "document", message: "is not a valid customer config" }],
     );
   }
   return parsed.data;
+}
+
+function schemaProblems(issues: readonly z.core.$ZodIssue[]): ConfigProblem[] {
+  return issues.flatMap((issue): ConfigProblem[] => {
+    if (issue.code === "unrecognized_keys") {
+      const prefix = issue.path.map(String).join(".");
+      return issue.keys.map((key) => ({
+        path: prefix.length === 0 ? key : `${prefix}.${key}`,
+        message: "is not a field",
+      }));
+    }
+    return [
+      {
+        path: issue.path.length === 0 ? "document" : issue.path.map(String).join("."),
+        message: issue.message,
+      },
+    ];
+  });
 }
 
 function readCode(error: unknown): string | undefined {

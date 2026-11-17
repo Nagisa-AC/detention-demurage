@@ -5,14 +5,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { ELEMENT_KEYS, carryDecisions, isConfirmedAbsent, savedDecisionSchema, type ElementRecord } from "dd-core";
+import {
+  CustomerConfigError,
+  ELEMENT_KEYS,
+  carryDecisions,
+  isConfirmedAbsent,
+  parseCustomerConfig,
+  savedDecisionSchema,
+  type ElementRecord,
+} from "dd-core";
 import type { PrismaClient } from "@prisma/client";
 import { appDatabaseUrl, testDatabaseUrl } from "./guard";
 import { replayReview } from "../review-store";
+import { insertSettingsVersion, type SettingsSql } from "../settings";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const documentHash = createHash("sha256").update("synthetic-db-fixture").digest("hex");
-const appendOnly = ["Submission", "LedgerEntry", "AuditEvent"] as const;
+const appendOnly = ["Submission", "LedgerEntry", "AuditEvent", "CustomerConfigVersion"] as const;
 const laterTables = ["Case", "CaseLine", "Submission", "LedgerEntry", "FeeInvoice"] as const;
 const customerTables = [
   "AuditEvent",
@@ -20,6 +29,7 @@ const customerTables = [
   "CaseLine",
   "ChargeLine",
   "Customer",
+  "CustomerConfigVersion",
   "Document",
   "ElementValue",
   "FeeInvoice",
@@ -81,7 +91,8 @@ describe("database", () => {
   beforeEach(async () => {
     await owner.query(`TRUNCATE TABLE
       "Finding", "ProcessingRun", "ChargeLine", "ElementValue", "Invoice", "Document",
-      "CaseLine", "Case", "Submission", "LedgerEntry", "FeeInvoice", "AuditEvent", "Customer"`);
+      "CaseLine", "Case", "Submission", "LedgerEntry", "FeeInvoice", "AuditEvent",
+      "CustomerConfigVersion", "Customer"`);
   });
 
   it("gives dd_app no update, delete, or truncate on the append-only tables", async () => {
@@ -402,6 +413,60 @@ describe("database", () => {
     expect(reviewed.decisions).toHaveLength(2);
   });
 
+  it("saves settings as a new version and leaves the previous version in place", async () => {
+    const customerId = await insertHarbor();
+    const yaml = fs.readFileSync(path.resolve(webRoot, "../../fixtures/config/harbor_home.yaml"), "utf8");
+    const first = await insertSettingsVersion(settingsSql(), { customerId, yaml, actor: "Ada" });
+    expect(first).toEqual({ ok: true, version: 1 });
+    const second = await insertSettingsVersion(settingsSql(), {
+      customerId,
+      yaml: yaml.replace('fee_pct: "0.25"', 'fee_pct: "0.30"'),
+      actor: "Bea",
+    });
+    expect(second).toEqual({ ok: true, version: 2 });
+
+    const stored = await app.query<{ version: number; config: { fee_pct: string }; created_by: string }>(
+      `SELECT version, config, created_by
+       FROM "CustomerConfigVersion"
+       WHERE customer_id = $1
+       ORDER BY version`,
+      [customerId],
+    );
+    expect(stored.rows.map((row) => row.version)).toEqual([1, 2]);
+    expect(stored.rows.map((row) => row.created_by)).toEqual(["Ada", "Bea"]);
+    expect(stored.rows[0]?.config.fee_pct).toBe("0.25");
+    expect(stored.rows[1]?.config.fee_pct).toBe("0.30");
+
+    const audits = await app.query<{ payload: unknown }>(
+      `SELECT payload FROM "AuditEvent"
+       WHERE customer_id = $1 AND action = 'settings_saved'
+       ORDER BY (payload->>'version')::int`,
+      [customerId],
+    );
+    expect(audits.rows.map((row) => row.payload)).toEqual([{ version: 1 }, { version: 2 }]);
+    expect(JSON.stringify(audits.rows)).not.toContain("fee_pct");
+  });
+
+  it("refuses invalid YAML with each problem and saves nothing", async () => {
+    const customerId = await insertHarbor();
+    const yaml = fs.readFileSync(path.resolve(webRoot, "../../fixtures/config/harbor_home.yaml"), "utf8");
+    const bad = `${yaml}nickname: nope\nextra: also\n`;
+    const result = await insertSettingsVersion(settingsSql(), { customerId, yaml: bad, actor: "Ada" });
+    expect(result).toEqual({ ok: false, problems: problemsOf(bad) });
+    expect(problemsOf(bad).length).toBeGreaterThan(1);
+    await expectNothingSaved(customerId);
+  });
+
+  it("refuses a config id that does not match the customer", async () => {
+    const customerId = await insertHarbor();
+    const yaml = fs
+      .readFileSync(path.resolve(webRoot, "../../fixtures/config/harbor_home.yaml"), "utf8")
+      .replace(/^id: harbor_home$/m, "id: other_home");
+    const result = await insertSettingsVersion(settingsSql(), { customerId, yaml, actor: "Ada" });
+    expect(result).toEqual({ ok: false, problems: [{ path: "id", message: "must be harbor_home" }] });
+    await expectNothingSaved(customerId);
+  });
+
   it("keeps one document per customer and hash and starts a run with no page text", async () => {
     const customerId = await insertCustomer();
     const inserted = await app.query<{ id: string }>(
@@ -432,6 +497,49 @@ describe("database", () => {
     expect(run.rows[0]).toEqual({ attempts: 0, page_records: null });
   });
 });
+
+function settingsSql(): SettingsSql {
+  return {
+    async query<T extends Record<string, unknown>>(text: string, values?: readonly unknown[]) {
+      const result = await appQuery<T>(text, values === undefined ? undefined : [...values]);
+      return { rows: result.rows };
+    },
+  };
+}
+
+function problemsOf(yaml: string): { path: string; message: string }[] {
+  try {
+    parseCustomerConfig(yaml, "settings");
+  } catch (error) {
+    expect(error).toBeInstanceOf(CustomerConfigError);
+    if (error instanceof CustomerConfigError) return [...error.problems];
+  }
+  throw new Error("expected the YAML to fail");
+}
+
+async function expectNothingSaved(customerId: string): Promise<void> {
+  const versions = await appQuery<{ n: number }>(
+    `SELECT count(*)::int AS n FROM "CustomerConfigVersion" WHERE customer_id = $1`,
+    [customerId],
+  );
+  const audits = await appQuery<{ n: number }>(
+    `SELECT count(*)::int AS n FROM "AuditEvent" WHERE customer_id = $1 AND action = 'settings_saved'`,
+    [customerId],
+  );
+  expect(versions.rows[0]?.n).toBe(0);
+  expect(audits.rows[0]?.n).toBe(0);
+}
+
+async function insertHarbor(): Promise<string> {
+  const inserted = await appQuery<{ id: string }>(
+    `INSERT INTO "Customer" (config_id, display_name)
+     VALUES ('harbor_home', 'Harbor Home Goods')
+     RETURNING id`,
+  );
+  const id = inserted.rows[0]?.id;
+  if (id === undefined) throw new Error("missing customer id");
+  return id;
+}
 
 async function insertCustomer(): Promise<string> {
   const inserted = await appQuery<{ id: string }>(

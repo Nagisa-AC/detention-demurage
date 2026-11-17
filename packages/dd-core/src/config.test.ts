@@ -4,7 +4,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stringify } from "yaml";
 import { describe, expect, it } from "vitest";
-import { CustomerConfigError, loadCustomerConfig, type ConfigProblem, type CustomerConfig } from "./config.js";
+import {
+  CustomerConfigError,
+  loadCustomerConfig,
+  parseCustomerConfig,
+  type ConfigProblem,
+  type CustomerConfig,
+} from "./config.js";
 
 const configDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../fixtures/config");
 const harborPath = path.join(configDir, "harbor_home.yaml");
@@ -48,6 +54,7 @@ describe("loadCustomerConfig", () => {
       retention_days_after_close: 730,
     });
     expect(typeof config.fee_pct).toBe("string");
+    expect(parseCustomerConfig(fs.readFileSync(harborPath, "utf8"), harborPath)).toEqual(config);
   });
 
   it("records why the contract window is February 2026", () => {

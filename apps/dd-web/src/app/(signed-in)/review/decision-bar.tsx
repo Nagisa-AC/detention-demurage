@@ -76,8 +76,10 @@ function DecisionForm({
   selected: ScreenElement;
   onMessage: (message: string) => void;
 }) {
+  const [marking, setMarking] = useState(false);
   const [text, setText] = useState("");
   const [page, setPage] = useState(selected.page === null ? "1" : String(selected.page));
+  const absent = selected.storedState === "suggested_absent";
   return (
     <form
       className="bar-form"
@@ -88,7 +90,17 @@ function DecisionForm({
     >
       <input type="hidden" name="invoiceId" value={invoiceId} />
       <input type="hidden" name="elementKey" value={selected.key} />
-      {selected.storedState === "suggested_absent" ? (
+      {absent && !marking ? (
+        <>
+          <button type="button" className="btn" onClick={() => setMarking(true)}>
+            It&apos;s on the page — mark present
+          </button>
+          <Submit name="command" value="confirm_missing" className="btn primary">
+            Confirm missing
+          </Submit>
+        </>
+      ) : null}
+      {absent && marking ? (
         <>
           <label>
             Text
@@ -104,14 +116,15 @@ function DecisionForm({
               onChange={(event) => setPage(event.target.value)}
             />
           </label>
-          <Submit name="command" value="mark_present" className="btn">
-            It&apos;s on the page — mark present
+          <Submit name="command" value="mark_present" className="btn primary">
+            Save
           </Submit>
-          <Submit name="command" value="confirm_missing" className="btn primary">
-            Confirm missing
-          </Submit>
+          <button type="button" className="btn" onClick={() => setMarking(false)}>
+            Cancel
+          </button>
         </>
-      ) : (
+      ) : null}
+      {absent ? null : (
         <>
           <label>
             Text
