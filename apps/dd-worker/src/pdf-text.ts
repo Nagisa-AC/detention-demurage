@@ -1,7 +1,9 @@
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 /** One string per page, items joined with no extra spaces, matching the fixture text layer. */
 export async function readPdfPages(pdf: Uint8Array): Promise<string[]> {
+  // The bundle ships pdf.worker.mjs beside main.mjs. A missing or wrong file fails this read.
+  GlobalWorkerOptions.workerSrc = new URL("./pdf.worker.mjs", import.meta.url).href;
   const task = getDocument({ data: pdf, verbosity: 0 });
   const doc = await task.promise;
   const pages: string[] = [];

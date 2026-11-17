@@ -10,7 +10,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 describe("worker scripts", () => {
   it("sends the remote files and reads the sha from dist", () => {
     const dir = path.join(repoRoot, "scripts");
-    for (const name of ["worker-install.sh", "worker-rollback.sh", "worker-journal.sh"]) {
+    for (const name of ["worker-install.sh", "worker-rollback.sh", "worker-journal.sh", "worker-requeue.sh"]) {
       const text = fs.readFileSync(path.join(dir, name), "utf8");
       expect(text.startsWith("#!/bin/bash\nset -euo pipefail\n"), name).toBe(true);
     }
@@ -36,6 +36,14 @@ describe("worker scripts", () => {
     expect(restartAt).toBeLessThan(restartsAt);
     expect(restartsAt).toBeLessThan(sleepAt);
     expect(sleepAt).toBeLessThan(journalAt);
+    const requeue = fs.readFileSync(path.join(dir, "requeue-run.sh"), "utf8");
+    expect(requeue).toContain("scripts/worker-requeue.sh");
+    expect(requeue).toContain("RUN_ID");
+    expect(requeue).not.toContain("postgres://");
+    expect(requeue).not.toContain("get-parameter");
+    const remoteRequeue = fs.readFileSync(path.join(dir, "worker-requeue.sh"), "utf8");
+    expect(remoteRequeue).toContain("--requeue");
+    expect(remoteRequeue).not.toContain("postgres://");
     const rollback = fs.readFileSync(path.join(dir, "rollback-worker.sh"), "utf8");
     expect(rollback).toContain("scripts/worker-rollback.sh");
     expect(rollback).not.toContain("systemctl");
@@ -57,6 +65,10 @@ describe("worker bundle", () => {
     expect(names).toEqual(["main.mjs", "pdf.worker.mjs"]);
     const main = execFileSync("tar", ["-xOf", tarPath, "main.mjs"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     expect(main.startsWith('import { createRequire as __ddCreateRequire } from "node:module"; const require = __ddCreateRequire(import.meta.url);')).toBe(true);
-    expect(fs.readFileSync(path.join(repoRoot, "apps/dd-worker/bundle.mjs"), "utf8")).not.toContain("require-shim");
+    const bundle = fs.readFileSync(path.join(repoRoot, "apps/dd-worker/bundle.mjs"), "utf8");
+    expect(bundle).not.toContain("require-shim");
+    expect(bundle).not.toContain("check.mjs");
+    expect(bundle).toContain("--check-pdf");
+    expect(main).toContain("./pdf.worker.mjs");
   }, 60_000);
 });

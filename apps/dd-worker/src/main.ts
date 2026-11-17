@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -10,18 +11,16 @@ import { syntheticAllowlist } from "./allow.js";
 import { runOnce } from "./loop.js";
 import { readModelPages } from "./model.js";
 import { readPdfPages } from "./pdf-text.js";
-import { processDocument } from "./process.js";
-import { claimNext, finishRun } from "./queue.js";
-import { readWorkerSecrets } from "./ssm.js";
+import { processDocument, sha256Hex } from "./process.js";
+import { claimNext, finishRun, requeueRun } from "./queue.js";
+import { assertDatabaseTls, DATABASE_PARAMETER, readWorkerSecrets } from "./ssm.js";
 
 const REGION = "us-east-2";
 
 export async function main(): Promise<void> {
   // DynamicUser has no home directory. The AWS SDK calls os.homedir() while loading
   // shared config, and that throws ENOENT. /tmp is private to this service.
-  if (process.env.HOME === undefined || process.env.HOME === "") {
-    process.env.HOME = "/tmp";
-  }
+  ensureHome();
   const credentials = fromInstanceMetadata();
   const ssm = new SSMClient({ region: REGION, credentials });
   const secrets = await readWorkerSecrets(async (name) => {
@@ -69,7 +68,8 @@ function delay(ms: number): Promise<void> {
 
 const entry = process.argv[1];
 if (entry !== undefined && path.resolve(entry) === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes("--self-check")) {
+  const command = process.argv[2];
+  if (command === "--self-check") {
     // Importing the modules above evaluates them. Stop before SSM, S3, Postgres, or the model.
     if (
       typeof S3Client !== "function" ||
@@ -83,5 +83,100 @@ if (entry !== undefined && path.resolve(entry) === fileURLToPath(import.meta.url
     }
     process.exit(0);
   }
-  void main();
+  if (command === "--check-pdf") {
+    void checkPdf(process.argv[3]).then((code) => process.exit(code));
+  } else if (command === "--requeue") {
+    void requeue(process.argv[3] ?? "");
+  } else {
+    void main();
+  }
+}
+
+/** Read one synthetic PDF with the bundled worker and do not call the model. */
+async function checkPdf(file: string | undefined): Promise<number> {
+  if (file === undefined || file === "") {
+    console.error("Pass the PDF path.");
+    return 1;
+  }
+  const pdf = new Uint8Array(readFileSync(file));
+  let sawText = false;
+  const result = await processDocument({
+    pdf,
+    declaredHash: sha256Hex(pdf),
+    allow: syntheticAllowlist(),
+    readPages: readPdfPages,
+    extract: async (_pdf, pages) => {
+      sawText = pages.length > 0;
+      return [];
+    },
+  });
+  const reason = result.pages[0]?.reason;
+  if (reason === "checksum" || reason === "not_synthetic") {
+    console.error("The bundled reader did not accept the PDF.");
+    return 1;
+  }
+  if (!sawText) {
+    console.error("The bundled reader returned an empty text layer.");
+    return 1;
+  }
+  return 0;
+}
+
+async function requeue(runId: string): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(runId)) {
+    console.error("Run id must be a UUID.");
+    process.exit(1);
+  }
+  ensureHome();
+  const credentials = fromInstanceMetadata();
+  const ssm = new SSMClient({ region: REGION, credentials });
+  let databaseUrl = "";
+  try {
+    const out = await ssm.send(new GetParameterCommand({ Name: DATABASE_PARAMETER, WithDecryption: true }));
+    databaseUrl = out.Parameter?.Value ?? "";
+  } catch (error) {
+    console.error(`The database parameter was not read. ${errorToken(error)}`);
+    process.exit(1);
+  }
+  try {
+    requireAppDatabase(databaseUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    console.error(message === "The database URL must set sslmode=require or stricter." ? message : "The database URL must connect as dd_app.");
+    process.exit(1);
+  }
+  const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    const updated = await requeueRun(pool, runId);
+    if (!updated) {
+      console.error("No run was requeued.");
+      process.exit(1);
+    }
+    console.log(`requeued ${runId}`);
+  } catch (error) {
+    console.error(`The run was not requeued. ${errorToken(error)}`);
+    process.exit(1);
+  } finally {
+    await pool.end();
+  }
+}
+
+function requireAppDatabase(databaseUrl: string): void {
+  assertDatabaseTls(databaseUrl);
+  let username: string;
+  try {
+    username = decodeURIComponent(new URL(databaseUrl).username);
+  } catch {
+    throw new Error("The database URL must connect as dd_app.");
+  }
+  if (username !== "dd_app") throw new Error("The database URL must connect as dd_app.");
+}
+
+function ensureHome(): void {
+  if (process.env.HOME === undefined || process.env.HOME === "") process.env.HOME = "/tmp";
+}
+
+function errorToken(error: unknown): string {
+  if (!(error instanceof Error) || !/^[A-Za-z0-9_.-]{1,64}$/.test(error.name)) return "Error";
+  return error.name;
 }

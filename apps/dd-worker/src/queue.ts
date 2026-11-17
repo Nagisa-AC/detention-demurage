@@ -76,6 +76,20 @@ export async function claimNext(pool: Pool, leaseSeconds: number): Promise<Claim
   }
 }
 
+export async function requeueRun(pool: Pool, runId: string): Promise<boolean> {
+  const updated = await pool.query(
+    `UPDATE "ProcessingRun"
+     SET finished_at = NULL,
+         attempts = 0,
+         lease_token = NULL,
+         leased_at = NULL,
+         page_records = NULL
+     WHERE id = $1::uuid`,
+    [runId],
+  );
+  return (updated.rowCount ?? 0) === 1;
+}
+
 export async function finishRun(
   pool: Pool,
   claimed: ClaimedRun,
