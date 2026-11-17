@@ -46,8 +46,9 @@ That reads the sha from `dist/`, uploads `deploy/<sha>.tar`, and sends `scripts/
 scripts/worker-logs.sh
 scripts/worker-logs.sh 50
 scripts/rollback-worker.sh
+scripts/requeue-run.sh <run-id>
 ```
 
-Logs are `journalctl -u dd-worker`. Each line carries the processing-run id. The lines do not include a customer name, a config id, a storage key, or page text. Rollback restores `/opt/dd-worker-previous`. These scripts read the bucket and the instance id from terraform outputs and stop when AWS credentials are missing.
+Logs are `journalctl -u dd-worker`. Each line carries the processing-run id. A failure line is `run <id> failed <stage> <name> <code>`. The lines do not include a customer name, a config id, a storage key, page text, or an error message. Rollback restores `/opt/dd-worker-previous`. Requeue clears `finished_at`, `attempts`, the lease, and `page_records` for that one run. It connects as `dd_app` with the worker's database URL and does not print the URL. These scripts read the bucket and the instance id from terraform outputs and stop when AWS credentials are missing.
 
 If an older `terraform.tfvars` still has `aws_account_id`, `vercel_team_slug`, `vercel_project_name`, or `vercel_oidc_thumbprint`, delete those lines. They are no longer variables.

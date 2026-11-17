@@ -3,6 +3,18 @@ import { runOnce } from "./loop.js";
 import type { ClaimedRun } from "./queue.js";
 import type { ProcessResult } from "./process.js";
 
+function claimedRun(id: string, attempts: number): ClaimedRun {
+  return {
+    id,
+    customerId: "cust",
+    documentId: "doc",
+    attempts,
+    leaseToken: "token",
+    storageKey: "documents/cust/file.pdf",
+    sha256: "ab".repeat(32),
+  };
+}
+
 describe("runOnce", () => {
   it("does not log a filename carried by a failed download", async () => {
     const secret = "marked-secret-filename";
@@ -17,9 +29,12 @@ describe("runOnce", () => {
       storageKey: `documents/cust/${secret}.pdf`,
       sha256: "ab".repeat(32),
     };
+    const downloadError = new Error(secret);
+    downloadError.name = "NoSuchKey";
+    Object.assign(downloadError, { $metadata: { httpStatusCode: 404 } });
     const outcome = await runOnce({
       claim: async () => claimed,
-      download: async () => Promise.reject(new Error(secret)),
+      download: async () => Promise.reject(downloadError),
       process: () => Promise.reject(new Error("should not process")),
       finish: async (_claimed, result) => {
         finished = result;
@@ -27,13 +42,59 @@ describe("runOnce", () => {
       log: (line) => logs.push(line),
     });
     expect(outcome).toBe("finished");
-    expect(logs).toEqual(["run run-1 failed", "run run-1 retry"]);
+    expect(logs).toEqual(["run run-1 failed download NoSuchKey 404", "run run-1 retry"]);
     expect(logs.join("\n")).not.toContain(secret);
     expect(logs.join("\n")).not.toContain(claimed.customerId);
     expect(logs.join("\n")).not.toContain(claimed.storageKey);
+    expect(logs.join("\n")).not.toContain("stack");
     expect(JSON.stringify(finished)).not.toContain(secret);
-    expect(finished?.pages[0]?.reason).toBe("worker_error");
+    expect(finished?.pages[0]?.reason).toBe("download NoSuchKey 404");
     expect(finished?.permanent).toBe(false);
+  });
+
+  it("logs a process failure as the stage, name, and code", async () => {
+    const secret = "process-secret-message";
+    const logs: string[] = [];
+    let finished: (ProcessResult & { permanent: boolean }) | undefined;
+    const error = new Error(secret);
+    Object.assign(error, { code: "ETIMEDOUT" });
+    await runOnce({
+      claim: async () => claimedRun("run-process", 1),
+      download: async () => new Uint8Array([1]),
+      process: () => Promise.reject(error),
+      finish: async (_claimed, result) => {
+        finished = result;
+      },
+      log: (line) => logs.push(line),
+    });
+    expect(logs).toEqual(["run run-process failed process Error ETIMEDOUT", "run run-process retry"]);
+    expect(logs.join("\n")).not.toContain(secret);
+    expect(finished?.pages[0]?.reason).toBe("process Error ETIMEDOUT");
+    expect(finished?.permanent).toBe(false);
+  });
+
+  it("logs a finish failure as the stage, name, and code", async () => {
+    const secret = "finish-secret-message";
+    const logs: string[] = [];
+    const error = new Error(secret);
+    error.name = "DatabaseError";
+    Object.assign(error, { code: "28P01" });
+    await runOnce({
+      claim: async () => claimedRun("run-finish", 1),
+      download: async () => new Uint8Array([1]),
+      process: async () => ({
+        finish: "ok",
+        modelCalled: false,
+        pages: [],
+        modelVersion: null,
+        promptVersion: null,
+        schemaVersion: null,
+      }),
+      finish: () => Promise.reject(error),
+      log: (line) => logs.push(line),
+    });
+    expect(logs).toEqual(["run run-finish failed finish DatabaseError 28P01"]);
+    expect(logs.join("\n")).not.toContain(secret);
   });
 
   it("finishes a run on the third failure", async () => {

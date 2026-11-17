@@ -43,15 +43,10 @@ await esbuild.build({
   entryPoints: [path.join(here, "src/main.ts")],
   outfile: path.join(stage, "main.mjs"),
 });
-await esbuild.build({
-  ...common,
-  entryPoints: [path.join(here, "src/bundle-check.ts")],
-  outfile: path.join(stage, "check.mjs"),
-});
 fs.copyFileSync(workerFile, path.join(stage, "pdf.worker.mjs"));
 
 execFileSync(process.execPath, [path.join(stage, "main.mjs"), "--self-check"], { stdio: "inherit" });
-execFileSync(process.execPath, [path.join(stage, "check.mjs"), path.join(repoRoot, "fixtures/synthetic/clean.pdf")], {
+execFileSync(process.execPath, [path.join(stage, "main.mjs"), "--check-pdf", path.join(repoRoot, "fixtures/synthetic/clean.pdf")], {
   stdio: "inherit",
 });
 

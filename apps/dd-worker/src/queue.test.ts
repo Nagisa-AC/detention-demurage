@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { claimNext, finishRun } from "./queue.js";
+import { claimNext, finishRun, requeueRun } from "./queue.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const webRoot = path.join(repoRoot, "apps/dd-web");
@@ -102,6 +102,26 @@ describe("extract queue", () => {
     const recorded = JSON.stringify(stored.rows[0]?.page_records);
     expect(recorded).toContain("checksum");
     expect(recorded).not.toContain("marked-secret-filename");
+
+    expect(await requeueRun(pool, third.id)).toBe(true);
+    const again = await pool.query<{
+      finished_at: Date | null;
+      attempts: number;
+      lease_token: string | null;
+      leased_at: Date | null;
+      page_records: unknown;
+    }>(
+      `SELECT finished_at, attempts, lease_token, leased_at, page_records FROM "ProcessingRun" WHERE id = $1`,
+      [third.id],
+    );
+    expect(again.rows[0]).toEqual({
+      finished_at: null,
+      attempts: 0,
+      lease_token: null,
+      leased_at: null,
+      page_records: null,
+    });
+    expect(await requeueRun(pool, "00000000-0000-4000-8000-000000000000")).toBe(false);
   });
 });
 
