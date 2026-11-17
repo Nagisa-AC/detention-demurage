@@ -36,14 +36,14 @@ export async function main(): Promise<void> {
         if (bytes === undefined) throw new Error("The document object is empty.");
         return bytes;
       },
-      process: (pdf, declaredHash) =>
+      process: (pdf, declaredHash, log) =>
         processDocument({
           pdf,
           declaredHash,
           allow,
           readPages: readPdfPages,
           extract: (file, pages) => readModelPages(file, pages),
-          log: (line) => console.info(line),
+          log,
         }),
       finish: (claimed, result) => finishRun(pool, claimed, result),
       log: (line) => console.info(line),

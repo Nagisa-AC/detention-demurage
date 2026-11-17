@@ -64,6 +64,13 @@ data "aws_iam_policy_document" "worker" {
   }
 
   statement {
+    sid       = "ReadDeployArtifacts"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${local.bucket_arn}/deploy/*"]
+  }
+
+  statement {
     sid     = "ReadWorkerParameters"
     effect  = "Allow"
     actions = ["ssm:GetParameter"]

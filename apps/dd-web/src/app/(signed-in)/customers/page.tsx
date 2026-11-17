@@ -1,6 +1,7 @@
 import { listCustomers } from "../../../customers";
 import { requireSession } from "../../../session";
 import { Shell } from "../../../shell";
+import { AddCustomerForm } from "./add-customer-form";
 import { UploadForm } from "./upload-form";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,10 @@ export default async function CustomersPage() {
   const customers = await listCustomers();
   return (
     <Shell session={session} active="customers">
-      {customers.length === 0 ? <p>No customers yet.</p> : <UploadForm customers={customers} />}
+      <div className="customers">
+        <AddCustomerForm />
+        {customers.length === 0 ? <p>No customers yet.</p> : <UploadForm customers={customers} />}
+      </div>
     </Shell>
   );
 }

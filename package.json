@@ -13,6 +13,7 @@
     "fixtures:render": "node fixtures/synthetic/render.mjs",
     "fixtures:check": "node fixtures/synthetic/check.mjs",
     "extract:fixture": "tsx packages/extract/src/live-check.ts",
+    "worker:bundle": "node apps/dd-worker/bundle.mjs",
     "dd": "tsx apps/dd-cli/src/main.ts",
     "evals": "tsx evals/harness.ts",
     "evals:capture": "tsx evals/capture.ts"

@@ -30,4 +30,24 @@ aws iam delete-access-key --user-name dd-web --access-key-id AKIA_OLD
 
 The worker still reads `/dd/worker/database-url` and `/dd/worker/anthropic-api-key` from Parameter Store. Create those SecureStrings yourself. The database URL must set `sslmode=require`, `verify-ca`, or `verify-full`.
 
+## Worker program
+
+`pnpm worker:bundle` writes `dist/dd-worker.tar` and `dist/dd-worker.sha256`. The tarball is `main.mjs` and `pdf.worker.mjs`. The unit runs `/usr/bin/node-24`, which is the `nodejs24` package. Applying the user-data change replaces the instance, because `user_data_replace_on_change` is set. The current instance has no program on it. After apply, the instance id is `terraform output -raw worker_instance_id`.
+
+The worker role can `s3:GetObject` on `deploy/*`. Upload and install from a clean tree:
+
+```sh
+scripts/deploy-worker.sh
+```
+
+That reads the sha from `dist/`, uploads `deploy/<sha>.tar`, and sends `scripts/worker-install.sh` through SSM. An account admin can overwrite that object. The install checks the sha256 and leaves the running program in place when the bytes differ.
+
+```sh
+scripts/worker-logs.sh
+scripts/worker-logs.sh 50
+scripts/rollback-worker.sh
+```
+
+Logs are `journalctl -u dd-worker`. Each line carries the processing-run id. The lines do not include a customer name, a config id, a storage key, or page text. Rollback restores `/opt/dd-worker-previous`. These scripts read the bucket and the instance id from terraform outputs and stop when AWS credentials are missing.
+
 If an older `terraform.tfvars` still has `aws_account_id`, `vercel_team_slug`, `vercel_project_name`, or `vercel_oidc_thumbprint`, delete those lines. They are no longer variables.

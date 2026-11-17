@@ -100,8 +100,11 @@ describe("terraform plan", () => {
     const types = (plan.resource_changes ?? []).map((change) => change.type);
     expect(types).not.toContain("aws_ssm_parameter");
     const worker = statements(String(resource("aws_iam_role_policy", "worker").policy));
-    expect(actions(worker, "s3:GetObject").every((arn) => arn.endsWith("/documents/*"))).toBe(true);
-    expect(actions(worker, "s3:GetObject").some((arn) => arn.includes("incoming"))).toBe(false);
+    expect(actions(worker, "s3:GetObject").sort()).toEqual([
+      "arn:aws:s3:::dd-recovery-plan-test/deploy/*",
+      "arn:aws:s3:::dd-recovery-plan-test/documents/*",
+    ]);
+    expect(worker.flatMap((item) => item.actions)).not.toContain("s3:PutObject");
     expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/database-url"))).toBe(true);
     expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/anthropic-api-key"))).toBe(true);
     const all = JSON.stringify(plan);
@@ -147,8 +150,11 @@ describe("terraform plan", () => {
     expect(typeof instance.user_data).toBe("string");
     expect(String(instance.user_data).length).toBeGreaterThan(0);
     const script = fs.readFileSync(path.join(infra, "worker-user-data.sh"), "utf8");
-    const rendered = script.replaceAll("${bucket}", "dd-recovery-plan-test").replaceAll("$${NODE}", "${NODE}");
+    const rendered = script.replaceAll("${bucket}", "dd-recovery-plan-test");
     expect(rendered).toContain("DD_BUCKET=dd-recovery-plan-test");
+    expect(rendered).toContain("dnf install -y nodejs24");
+    expect(rendered).toContain("ExecStart=/usr/bin/node-24 /opt/dd-worker/main.mjs");
+    expect(rendered).not.toContain("command -v node");
     for (const forbidden of ["postgres://", "sk-ant", "AKIA", "BEGIN OPENSSH", "BEGIN RSA", "password="]) {
       expect(rendered, forbidden).not.toContain(forbidden);
     }

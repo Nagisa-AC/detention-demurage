@@ -153,6 +153,17 @@ a:hover {
   font-size: 14px;
 }
 
+.customers {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.customers > p {
+  margin: 0;
+  font-size: 14px;
+}
+
 .upload {
   display: flex;
   flex-direction: column;
