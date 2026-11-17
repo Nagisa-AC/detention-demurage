@@ -2,6 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { extract } from "dd-extract";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pg from "pg";
 import { syntheticAllowlist } from "./allow.js";
 import { runOnce } from "./loop.js";
@@ -60,5 +62,19 @@ function delay(ms: number): Promise<void> {
 
 const entry = process.argv[1];
 if (entry !== undefined && path.resolve(entry) === fileURLToPath(import.meta.url)) {
+  if (process.argv.includes("--self-check")) {
+    // Importing the modules above evaluates them. Stop before SSM, S3, Postgres, or the model.
+    if (
+      typeof S3Client !== "function" ||
+      typeof SSMClient !== "function" ||
+      typeof pg.Pool !== "function" ||
+      typeof getDocument !== "function" ||
+      typeof extract !== "function"
+    ) {
+      console.error("The bundle self-check did not load S3, SSM, pg, pdfjs, and extract.");
+      process.exit(1);
+    }
+    process.exit(0);
+  }
   void main();
 }

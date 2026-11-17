@@ -23,6 +23,10 @@ const stage = fs.mkdtempSync(path.join(os.tmpdir(), "dd-worker-bundle-"));
 const dist = path.join(repoRoot, "dist");
 fs.mkdirSync(dist, { recursive: true });
 
+// The bundle is ESM, so it has no require. CommonJS dependencies still call require() for Node built-ins.
+const requireBanner =
+  'import { createRequire as __ddCreateRequire } from "node:module"; const require = __ddCreateRequire(import.meta.url);';
+
 const common = {
   bundle: true,
   platform: "node",
@@ -30,7 +34,7 @@ const common = {
   target: "node24",
   legalComments: "eof",
   external: ["@napi-rs/canvas", "pg-native"],
-  inject: [path.join(here, "require-shim.mjs")],
+  banner: { js: requireBanner },
   logLevel: "warning",
 };
 
@@ -46,6 +50,7 @@ await esbuild.build({
 });
 fs.copyFileSync(workerFile, path.join(stage, "pdf.worker.mjs"));
 
+execFileSync(process.execPath, [path.join(stage, "main.mjs"), "--self-check"], { stdio: "inherit" });
 execFileSync(process.execPath, [path.join(stage, "check.mjs"), path.join(repoRoot, "fixtures/synthetic/clean.pdf")], {
   stdio: "inherit",
 });
