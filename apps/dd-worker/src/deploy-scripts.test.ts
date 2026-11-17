@@ -28,6 +28,14 @@ describe("worker scripts", () => {
     const missing = install.indexOf("The dd-worker unit is missing; check /var/log/cloud-init-output.log");
     expect(missing).toBeGreaterThan(-1);
     expect(missing).toBeLessThan(install.indexOf("tar -C /opt/dd-worker"));
+    const restartAt = install.indexOf("systemctl restart dd-worker");
+    const sleepAt = install.indexOf("sleep 15");
+    const restartsAt = install.indexOf("systemctl show -p NRestarts --value dd-worker");
+    const journalAt = install.indexOf("journalctl -u dd-worker -n 30 --no-pager");
+    expect(restartAt).toBeGreaterThan(-1);
+    expect(restartAt).toBeLessThan(restartsAt);
+    expect(restartsAt).toBeLessThan(sleepAt);
+    expect(sleepAt).toBeLessThan(journalAt);
     const rollback = fs.readFileSync(path.join(dir, "rollback-worker.sh"), "utf8");
     expect(rollback).toContain("scripts/worker-rollback.sh");
     expect(rollback).not.toContain("systemctl");

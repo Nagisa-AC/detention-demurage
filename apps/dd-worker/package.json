@@ -8,6 +8,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",
     "@aws-sdk/client-ssm": "^3.700.0",
+    "@aws-sdk/credential-providers": "3.1169.0",
     "dd-core": "workspace:*",
     "dd-extract": "workspace:*",
     "pdfjs-dist": "^6.5.438",
