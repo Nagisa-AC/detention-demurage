@@ -94,7 +94,8 @@ export async function processDocument(input: {
     promptVersion: version?.promptVersion ?? null,
     schemaVersion: version?.schemaVersion ?? null,
   };
-  if (failed) return result;
+  // A page with no text layer is reviewed by hand. Do not save the other pages as an invoice.
+  if (failed || stored.some((page) => page.status === "no_text_layer")) return result;
   const extractions = extractionsOf(extracted);
   if (extractions === null) return result;
   try {

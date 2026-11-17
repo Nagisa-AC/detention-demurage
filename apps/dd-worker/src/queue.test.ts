@@ -278,6 +278,24 @@ describe("saved read", () => {
     expect(await pool.query(`SELECT count(*)::int AS n FROM "Invoice"`)).toMatchObject({ rows: [{ n: 1 }] });
   });
 
+  it("finishes a document with a page that has no text layer and saves no invoice", async () => {
+    const [page] = pagesFromFixture("clean");
+    if (page === undefined) throw new Error("missing page");
+    const claimed = await seed("save_no_text", hash);
+    const result = await readFixture(pdf, hash, [page], [textOf(page), ""]);
+    expect(result.finish).toBe("ok");
+    expect(result.read).toBeUndefined();
+    expect(result.pages.map((item) => item.status)).toEqual(["ok", "no_text_layer"]);
+    await finishRun(pool, claimed, { ...result, permanent: true });
+    expect(await counts()).toEqual({ invoices: 0, elements: 0, lines: 0 });
+    const stored = await pool.query<{ finished_at: Date | null; page_records: { page: number; status: string }[] }>(
+      `SELECT finished_at, page_records FROM "ProcessingRun" WHERE id = $1`,
+      [claimed.id],
+    );
+    expect(stored.rows[0]?.finished_at).not.toBeNull();
+    expect(stored.rows[0]?.page_records[1]).toMatchObject({ page: 2, status: "no_text_layer" });
+  });
+
   it("keeps a conflicting element as unreadable", async () => {
     const [first] = pagesFromFixture("clean");
     if (first === undefined) throw new Error("missing page");
@@ -304,17 +322,25 @@ describe("saved read", () => {
     const line = clean.charge_lines[0];
     if (line === undefined) throw new Error("missing line");
     const bad = pageExtractionSchema.parse({ ...clean, charge_lines: [{ ...line, amount: secret }] });
-    const claimed = await seed("save_normalize", hash, 2);
+    const claimed = await seed("save_normalize", hash);
+    expect(claimed.attempts).toBe(1);
     const logs: string[] = [];
+    let calls = 0;
     await runOnce({
       claim: async () => claimed,
       download: async () => pdf,
-      process: (file, declaredHash) => readFixture(file, declaredHash, [bad]),
+      process: async (file, declaredHash) => {
+        calls += 1;
+        return readFixture(file, declaredHash, [bad]);
+      },
       finish: (run, result) => finishRun(pool, run, result),
       log: (entry) => logs.push(entry),
     });
+    expect(calls).toBe(1);
     expect(logs[0]).toBe(`run ${claimed.id} failed process NormalizeError`);
+    expect(logs[1]).toBe(`run ${claimed.id} finished`);
     expect(logs.join("\n")).not.toContain(secret);
+    expect(await claimNext(pool, 3600)).toBeNull();
     expect(await counts()).toEqual({ invoices: 0, elements: 0, lines: 0 });
     const stored = await pool.query<{ finished_at: Date | null; invoice_id: string | null; page_records: { reason?: string }[] }>(
       `SELECT finished_at, invoice_id, page_records FROM "ProcessingRun" WHERE id = $1`,
@@ -331,7 +357,8 @@ describe("saved read", () => {
       elements: { bl_number: { text: secret, page: 3 } },
       charge_lines: [],
     });
-    const stitchClaim = await seed("save_stitch", hash, 2);
+    const stitchClaim = await seed("save_stitch", hash);
+    expect(stitchClaim.attempts).toBe(1);
     const stitchLogs: string[] = [];
     await runOnce({
       claim: async () => stitchClaim,
@@ -341,7 +368,9 @@ describe("saved read", () => {
       log: (entry) => stitchLogs.push(entry),
     });
     expect(stitchLogs[0]).toBe(`run ${stitchClaim.id} failed process StitchFailure`);
+    expect(stitchLogs[1]).toBe(`run ${stitchClaim.id} finished`);
     expect(stitchLogs.join("\n")).not.toContain(secret);
+    expect(await claimNext(pool, 3600)).toBeNull();
     expect(await counts()).toEqual({ invoices: 0, elements: 0, lines: 0 });
   });
 
