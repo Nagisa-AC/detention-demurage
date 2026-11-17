@@ -1,4 +1,4 @@
-import { ELEMENT_KEYS, savedDecisionSchema, type ElementKey } from "dd-core";
+import { ELEMENT_KEYS, ELEMENTS, savedDecisionSchema, type ElementKey } from "dd-core";
 import { elementStateSummary } from "./review-format";
 import { describe, expect, it } from "vitest";
 import {
@@ -127,6 +127,36 @@ describe("review pills", () => {
     expect(element?.pill).toBe("Confirmed missing");
     expect(element?.needsDecision).toBe(false);
     expect(stored.find((row) => row.elementKey === "dispute_contact")?.state).toBe("suggested_absent");
+  });
+});
+
+describe("review labels", () => {
+  it("uses the design wording and leaves the element keys and citations alone", () => {
+    const replay = presentReview({
+      documentHash: HASH,
+      header: header(),
+      rows: rows(),
+      decisions: [],
+    });
+    const label = (key: ElementKey) => replay.elements.find((element) => element.key === key)?.label;
+    expect(label("billed_party_basis")).toBe("Why this party is billed");
+    expect(label("free_time_days")).toBe("Free time allowed");
+    expect(label("charged_dates")).toBe("Charged dates");
+    expect(label("total_due")).toBe("Total due");
+    expect(label("dispute_info_link")).toBe("Dispute info link");
+    expect(label("cert_rules_compliance")).toBe("Certification: rules compliance");
+    expect(label("cert_no_contribution")).toBe("Certification: no contribution");
+    expect(ELEMENTS.billed_party_basis).toEqual({
+      citation: "46 CFR 541.6(a)(4)",
+      applicability: "both",
+      label: "Billed party basis",
+    });
+    expect(ELEMENTS.free_time_days.label).toBe("Free time");
+    expect(ELEMENTS.charged_dates.label).toBe("Dates charged");
+    expect(ELEMENTS.total_due.label).toBe("Total amount due");
+    expect(ELEMENTS.dispute_info_link.label).toBe("Dispute information link");
+    expect(ELEMENTS.cert_rules_compliance.label).toBe("Rules certification");
+    expect(ELEMENTS.cert_no_contribution.label).toBe("No-contribution certification");
   });
 });
 

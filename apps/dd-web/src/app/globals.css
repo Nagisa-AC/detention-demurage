@@ -214,6 +214,102 @@ a:hover {
   background: #8AA0C8;
 }
 
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+  background: #FFFFFF;
+  border: 1px solid #DADDE3;
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 14px;
+}
+
+.settings h2,
+.settings p {
+  margin: 0;
+}
+
+.settings dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.settings dl div {
+  display: grid;
+  grid-template-columns: 9.5em 1fr;
+  gap: 12px;
+}
+
+.settings dt {
+  color: #59606D;
+}
+
+.settings dd {
+  margin: 0;
+}
+
+.settings ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-form textarea {
+  font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #14181F;
+  background: #FFFFFF;
+  border: 1px solid #C9CED8;
+  border-radius: 8px;
+  min-height: 220px;
+  padding: 12px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.settings-form button {
+  font: inherit;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: #1F4FB8;
+  border: none;
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  width: fit-content;
+}
+
+.settings-form button:hover {
+  background: #163A8A;
+}
+
+.settings-form button:disabled {
+  background: #8AA0C8;
+}
+
+.problems {
+  margin: 0;
+  padding-left: 18px;
+  color: #8A4B00;
+}
+
+.problems span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .queue,
 .review {
   display: flex;

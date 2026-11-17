@@ -56,6 +56,21 @@ export type DecisionCommand =
 
 const TEXT_LIMIT = 2000;
 
+/** Design wording for the review screen. Keys and citations stay on ELEMENTS. */
+const REVIEW_LABELS: Partial<Record<ElementKey, string>> = {
+  billed_party_basis: "Why this party is billed",
+  free_time_days: "Free time allowed",
+  charged_dates: "Charged dates",
+  total_due: "Total due",
+  dispute_info_link: "Dispute info link",
+  cert_rules_compliance: "Certification: rules compliance",
+  cert_no_contribution: "Certification: no contribution",
+};
+
+function reviewLabel(key: ElementKey): string {
+  return REVIEW_LABELS[key] ?? ELEMENTS[key].label;
+}
+
 /**
  * Pill for one stored state.
  * A decision that dd-core carried, or a confirmed absence, is no longer open.
@@ -127,7 +142,7 @@ export function presentReview(input: {
     const page = confirmed || isConfirmedAbsent(replayed) ? null : replayed.page;
     return {
       key,
-      label: ELEMENTS[key].label,
+      label: reviewLabel(key),
       pill: pill.label,
       tone: pill.tone,
       needsDecision: !decided && isFlagged(stored.state, stored.grounded),

@@ -29,6 +29,7 @@ model Customer {
   ledgerEntries  LedgerEntry[]
   feeInvoices    FeeInvoice[]
   auditEvents    AuditEvent[]
+  configVersions CustomerConfigVersion[]
 
   @@map("Customer")
 }
@@ -246,6 +247,22 @@ model FeeInvoice {
 
   @@index([customerId])
   @@map("FeeInvoice")
+}
+
+/// Append-only for dd_app. A change is a new version. The highest version is current.
+/// Foreign keys are ON DELETE RESTRICT and ON UPDATE RESTRICT.
+model CustomerConfigVersion {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  version    Int
+  config     Json     @db.JsonB
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([customerId, version])
+  @@map("CustomerConfigVersion")
 }
 
 /// Append-only for dd_app. Review decisions are rows here.

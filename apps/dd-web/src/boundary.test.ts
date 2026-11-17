@@ -64,6 +64,7 @@ describe("dd-web boundary", () => {
     expect(actions.map(rel).sort()).toEqual([
       "(signed-in)/account.ts",
       "(signed-in)/customers/create-customer.ts",
+      "(signed-in)/customers/save-settings.ts",
       "(signed-in)/review/actions.ts",
       "(signed-in)/sign-out.ts",
     ]);
