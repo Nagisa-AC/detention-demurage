@@ -21,6 +21,10 @@ if ! command -v aws >/dev/null 2>&1; then
   echo "The AWS CLI is not installed on the instance." >&2
   exit 1
 fi
+if [[ ! -f /etc/systemd/system/dd-worker.service ]]; then
+  echo "The dd-worker unit is missing; check /var/log/cloud-init-output.log" >&2
+  exit 1
+fi
 
 dnf install -y nodejs24
 test -x /usr/bin/node-24

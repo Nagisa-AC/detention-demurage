@@ -24,6 +24,10 @@ describe("worker scripts", () => {
     const logs = fs.readFileSync(path.join(dir, "worker-logs.sh"), "utf8");
     expect(logs).toContain("scripts/worker-journal.sh");
     expect(logs).not.toContain("journalctl");
+    const install = fs.readFileSync(path.join(dir, "worker-install.sh"), "utf8");
+    const missing = install.indexOf("The dd-worker unit is missing; check /var/log/cloud-init-output.log");
+    expect(missing).toBeGreaterThan(-1);
+    expect(missing).toBeLessThan(install.indexOf("tar -C /opt/dd-worker"));
     const rollback = fs.readFileSync(path.join(dir, "rollback-worker.sh"), "utf8");
     expect(rollback).toContain("scripts/worker-rollback.sh");
     expect(rollback).not.toContain("systemctl");
