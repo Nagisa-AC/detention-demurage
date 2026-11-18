@@ -1,5 +1,13 @@
 import { Client } from "pg";
-import { ReviewError, type SavedDecision } from "dd-core";
+import { customerConfigSchema, ReviewError, savedDecisionSchema, type CustomerConfig, type SavedDecision } from "dd-core";
+import {
+  latestParty,
+  partyInConfig,
+  partyOptions,
+  shownPartyId,
+  type BillingPartyPayload,
+  type PartyOption,
+} from "./billing-party";
 import {
   approvalDecision,
   buildDecision,
@@ -64,6 +72,17 @@ type HeaderRow = {
 };
 
 const NOT_FOUND = "That invoice was not found.";
+const NO_SETTINGS = "This customer has no settings.";
+const NO_PARTY = "Choose a billing party before approving.";
+const NOT_IN_SETTINGS = "That billing party is not in the current settings.";
+const ALREADY_SET = "A billing party is already set.";
+const NOT_APPROVED = "That invoice is not approved.";
+
+export type BillingChoice = {
+  options: PartyOption[];
+  chosenPartyId: string | null;
+  canBackfill: boolean;
+};
 
 export async function withReviewDb<T>(run: (sql: ReviewSql) => Promise<T>): Promise<T | null> {
   const url = process.env.DATABASE_URL;
@@ -213,7 +232,17 @@ export async function recordApproval(
       actor: input.actor,
       at: input.at,
     });
-    await insertDecision(sql, body.customerId, input.actor, input.at, decision);
+    const settings = await currentSettings(sql, body.customerId);
+    if (settings === null) throw new ReviewError(NO_SETTINGS);
+    const chosen = latestParty(await partyEventRows(sql, body.customerId), input.invoiceId);
+    if (chosen === null) throw new ReviewError(NO_PARTY);
+    if (!partyInConfig(settings.config, chosen.party_id)) throw new ReviewError(NOT_IN_SETTINGS);
+    const stamped = savedDecisionSchema.parse({
+      ...decision,
+      party_id: chosen.party_id,
+      settings_version: settings.version,
+    });
+    await insertDecision(sql, body.customerId, input.actor, input.at, stamped);
     await sql.query("COMMIT");
     return { ok: true };
   } catch (error) {
@@ -221,6 +250,70 @@ export async function recordApproval(
     if (error instanceof ReviewError) return { ok: false, message: error.message };
     throw error;
   }
+}
+
+export async function recordBillingParty(
+  sql: ReviewSql,
+  input: { invoiceId: string; partyId: string; actor: string; at: string; backfill: boolean },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const partyId = input.partyId.trim();
+  if (partyId === "") return { ok: false, message: "Choose a billing party." };
+  try {
+    await sql.query("BEGIN");
+    const locked = await lockInvoice(sql, input.invoiceId);
+    if (locked === null) {
+      await sql.query("ROLLBACK");
+      return { ok: false, message: NOT_FOUND };
+    }
+    const body = await loadBody(sql, input.invoiceId, locked);
+    const settings = await currentSettings(sql, body.customerId);
+    if (settings === null) {
+      await sql.query("ROLLBACK");
+      return { ok: false, message: NO_SETTINGS };
+    }
+    if (!partyInConfig(settings.config, partyId)) {
+      await sql.query("ROLLBACK");
+      return { ok: false, message: NOT_IN_SETTINGS };
+    }
+    const existing = latestParty(await partyEventRows(sql, body.customerId), input.invoiceId);
+    const approval = body.decisions.find((decision) => decision.outcome === "approved");
+    const hasParty = existing !== null || approval?.party_id !== undefined;
+    if (input.backfill) {
+      if (!body.approved) {
+        await sql.query("ROLLBACK");
+        return { ok: false, message: NOT_APPROVED };
+      }
+      if (hasParty) {
+        await sql.query("ROLLBACK");
+        return { ok: false, message: ALREADY_SET };
+      }
+    } else if (body.approved) {
+      await sql.query("ROLLBACK");
+      return { ok: false, message: "This invoice is already approved." };
+    }
+    await insertParty(sql, body.customerId, input.actor, input.at, {
+      invoice_id: input.invoiceId,
+      party_id: partyId,
+      settings_version: settings.version,
+    });
+    await sql.query("COMMIT");
+    return { ok: true };
+  } catch (error) {
+    await rollback(sql);
+    if (error instanceof ReviewError) return { ok: false, message: error.message };
+    throw error;
+  }
+}
+
+export async function readBillingChoice(sql: ReviewSql, invoice: LoadedInvoice): Promise<BillingChoice> {
+  const settings = await currentSettings(sql, invoice.customerId);
+  const events = await partyEventRows(sql, invoice.customerId);
+  const chosenPartyId = shownPartyId(invoice.id, invoice.decisions, events);
+  return {
+    options: settings === null ? [] : partyOptions(settings.config),
+    chosenPartyId,
+    canBackfill: invoice.approved && chosenPartyId === null,
+  };
 }
 
 function headerOf(invoice: LoadedInvoice) {
@@ -323,6 +416,51 @@ async function insertDecision(
      VALUES ($1, $2::timestamptz, $3, 'review_decision', $4::jsonb)`,
     [customerId, at, actor, JSON.stringify(decision)],
   );
+}
+
+async function insertParty(
+  sql: ReviewSql,
+  customerId: string,
+  actor: string,
+  at: string,
+  payload: BillingPartyPayload,
+): Promise<void> {
+  await sql.query(
+    `INSERT INTO "AuditEvent" (customer_id, at, actor, action, payload)
+     VALUES ($1, $2::timestamptz, $3, 'billing_party_set', $4::jsonb)`,
+    [customerId, at, actor, JSON.stringify(payload)],
+  );
+}
+
+type SettingsRow = { version: number | string; config: unknown };
+
+async function currentSettings(
+  sql: ReviewSql,
+  customerId: string,
+): Promise<{ version: number; config: CustomerConfig } | null> {
+  const result = await sql.query<SettingsRow>(
+    `SELECT version, config FROM "CustomerConfigVersion"
+     WHERE customer_id = $1
+     ORDER BY version DESC
+     LIMIT 1`,
+    [customerId],
+  );
+  const row = result.rows[0];
+  if (row === undefined) return null;
+  const version = typeof row.version === "number" ? row.version : Number(row.version);
+  const parsed = customerConfigSchema.safeParse(row.config);
+  if (!Number.isInteger(version) || version < 1 || !parsed.success) return null;
+  return { version, config: parsed.data };
+}
+
+async function partyEventRows(sql: ReviewSql, customerId: string): Promise<{ payload: unknown }[]> {
+  const result = await sql.query<{ payload: unknown }>(
+    `SELECT payload FROM "AuditEvent"
+     WHERE customer_id = $1 AND action = 'billing_party_set'
+     ORDER BY at, id`,
+    [customerId],
+  );
+  return result.rows;
 }
 
 async function elementRows(sql: ReviewSql, invoiceIds: readonly string[]): Promise<(ElementSql & { invoice_id: string })[]> {

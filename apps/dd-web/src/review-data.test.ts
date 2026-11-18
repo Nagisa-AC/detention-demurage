@@ -1,6 +1,7 @@
-import { ELEMENT_KEYS, savedDecisionSchema, type ElementKey } from "dd-core";
+import { customerConfigSchema, ELEMENT_KEYS, savedDecisionSchema, type CustomerConfig, type ElementKey } from "dd-core";
 import { describe, expect, it } from "vitest";
-import { recordApproval, recordDecision, type ReviewSql } from "./review-data";
+import { parseBillingParty } from "./billing-party";
+import { readBillingChoice, recordApproval, recordBillingParty, recordDecision, type ReviewSql } from "./review-data";
 import type { StoredElement } from "./review-view";
 
 const INVOICE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -57,7 +58,7 @@ describe("review decisions", () => {
     expect(missingDecision).toEqual({ ok: false, message: "Every flagged element needs a decision." });
     expect(open.calls.some((call) => call.text.includes("INSERT"))).toBe(false);
 
-    const ready = fakeSql({ decided: true });
+    const ready = fakeSql({ decided: true, settings: { version: 4, config: sampleConfig() }, parties: [party("sample_line", 1)] });
     const approved = await recordApproval(ready, {
       invoiceId: INVOICE,
       actor: "Ibrahim",
@@ -65,21 +66,261 @@ describe("review decisions", () => {
       acknowledgedPages: [1, 2],
     });
     expect(approved).toEqual({ ok: true });
-    const insert = ready.calls.find((call) => call.text.includes('INSERT INTO "AuditEvent"'));
+    const insert = ready.calls.find((call) => call.text.includes("INSERT") && call.text.includes("review_decision"));
     const payload = savedDecisionSchema.parse(JSON.parse(String(insert?.values[3])));
-    expect(payload.outcome).toBe("approved");
+    expect(payload).toMatchObject({ outcome: "approved", party_id: "sample_line", settings_version: 4 });
     expect(ready.calls.some((call) => call.text.trim().startsWith("UPDATE"))).toBe(false);
+  });
+
+  it("refuses approval when there are no settings, no party, or the party left the current settings", async () => {
+    const noSettings = fakeSql({ decided: true, settings: null, parties: [party("sample_line", 1)] });
+    expect(
+      await recordApproval(noSettings, { invoiceId: INVOICE, actor: "Ibrahim", at: AT, acknowledgedPages: [1, 2] }),
+    ).toEqual({ ok: false, message: "This customer has no settings." });
+    expect(noSettings.calls.some((call) => call.text.includes("INSERT"))).toBe(false);
+
+    const noParty = fakeSql({ decided: true, settings: { version: 1, config: sampleConfig() } });
+    expect(
+      await recordApproval(noParty, { invoiceId: INVOICE, actor: "Ibrahim", at: AT, acknowledgedPages: [1, 2] }),
+    ).toEqual({ ok: false, message: "Choose a billing party before approving." });
+    expect(noParty.calls.some((call) => call.text.includes("INSERT"))).toBe(false);
+
+    const dropped = fakeSql({
+      decided: true,
+      settings: { version: 2, config: sampleConfig() },
+      parties: [party("retired_line", 1)],
+    });
+    expect(
+      await recordApproval(dropped, { invoiceId: INVOICE, actor: "Ibrahim", at: AT, acknowledgedPages: [1, 2] }),
+    ).toEqual({ ok: false, message: "That billing party is not in the current settings." });
+    expect(dropped.calls.some((call) => call.text.includes("INSERT"))).toBe(false);
+  });
+
+  it("keeps the first billing-party event and approves with the second choice", async () => {
+    const settings = { version: 1, config: sampleConfig() };
+    const sql = fakeSql({ decided: true, settings, parties: [] });
+    const first = await recordBillingParty(sql, {
+      invoiceId: INVOICE,
+      partyId: "sample_line",
+      actor: "Ibrahim",
+      at: "2026-11-17T20:01:00.000Z",
+      backfill: false,
+    });
+    expect(first).toEqual({ ok: true });
+    const snapshot = structuredClone(sql.parties[0]?.payload);
+    settings.version = 2;
+    const second = await recordBillingParty(sql, {
+      invoiceId: INVOICE,
+      partyId: "northbay_line",
+      actor: "Ibrahim",
+      at: "2026-11-17T20:02:00.000Z",
+      backfill: false,
+    });
+    expect(second).toEqual({ ok: true });
+    expect(sql.parties.map((row) => parseBillingParty(row.payload)?.party_id)).toEqual([
+      "sample_line",
+      "northbay_line",
+    ]);
+    expect(sql.parties[0]?.payload).toEqual(snapshot);
+    expect(parseBillingParty(snapshot)?.settings_version).toBe(1);
+    expect(sql.calls.some((call) => /^\s*(UPDATE|DELETE)/.test(call.text))).toBe(false);
+
+    const approved = await recordApproval(sql, {
+      invoiceId: INVOICE,
+      actor: "Ibrahim",
+      at: AT,
+      acknowledgedPages: [1, 2],
+    });
+    expect(approved).toEqual({ ok: true });
+    const insert = sql.calls.find((call) => call.text.includes("INSERT") && call.text.includes("review_decision"));
+    expect(savedDecisionSchema.parse(JSON.parse(String(insert?.values[3])))).toMatchObject({
+      party_id: "northbay_line",
+      settings_version: 2,
+    });
+  });
+
+  it("backfills an approved invoice once, and refuses any other backfill", async () => {
+    const settings = { version: 3, config: sampleConfig() };
+    const open = fakeSql({ settings, parties: [] });
+    expect(
+      await recordBillingParty(open, {
+        invoiceId: INVOICE,
+        partyId: "sample_line",
+        actor: "Ibrahim",
+        at: AT,
+        backfill: true,
+      }),
+    ).toEqual({ ok: false, message: "That invoice is not approved." });
+    expect(open.parties).toHaveLength(0);
+
+    const approved = fakeSql({ approved: true, settings, parties: [] });
+    expect(
+      await recordBillingParty(approved, {
+        invoiceId: INVOICE,
+        partyId: "retired_line",
+        actor: "Ibrahim",
+        at: AT,
+        backfill: true,
+      }),
+    ).toEqual({ ok: false, message: "That billing party is not in the current settings." });
+
+    const missing = fakeSql({ approved: true, settings: null, parties: [] });
+    expect(
+      await recordBillingParty(missing, {
+        invoiceId: INVOICE,
+        partyId: "sample_line",
+        actor: "Ibrahim",
+        at: AT,
+        backfill: true,
+      }),
+    ).toEqual({ ok: false, message: "This customer has no settings." });
+
+    const once = fakeSql({ approved: true, settings, parties: [] });
+    expect(
+      await recordBillingParty(once, {
+        invoiceId: INVOICE,
+        partyId: "cobalt_line",
+        actor: "Ibrahim",
+        at: AT,
+        backfill: true,
+      }),
+    ).toEqual({ ok: true });
+    expect(parseBillingParty(once.parties[0]?.payload)).toEqual({
+      invoice_id: INVOICE,
+      party_id: "cobalt_line",
+      settings_version: 3,
+    });
+    expect(
+      await recordBillingParty(once, {
+        invoiceId: INVOICE,
+        partyId: "sample_line",
+        actor: "Ibrahim",
+        at: "2026-11-17T21:00:00.000Z",
+        backfill: true,
+      }),
+    ).toEqual({ ok: false, message: "A billing party is already set." });
+    expect(once.parties).toHaveLength(1);
+    expect(
+      await recordBillingParty(once, {
+        invoiceId: INVOICE,
+        partyId: "sample_line",
+        actor: "Ibrahim",
+        at: "2026-11-17T21:00:00.000Z",
+        backfill: false,
+      }),
+    ).toEqual({ ok: false, message: "This invoice is already approved." });
+
+    const recorded = fakeSql({ approved: true, approvalParty: "sample_line", settings, parties: [] });
+    expect(
+      await recordBillingParty(recorded, {
+        invoiceId: INVOICE,
+        partyId: "cobalt_line",
+        actor: "Ibrahim",
+        at: AT,
+        backfill: true,
+      }),
+    ).toEqual({ ok: false, message: "A billing party is already set." });
+    expect(recorded.parties).toHaveLength(0);
+    expect(recorded.calls.some((call) => /^\s*(UPDATE|DELETE)/.test(call.text))).toBe(false);
+  });
+
+  it("offers the current pursue and do-not-pursue parties, and backfill only when none is set", async () => {
+    const sql = fakeSql({
+      settings: { version: 2, config: sampleConfig() },
+      parties: [party("sample_line", 1)],
+    });
+    const choice = await readBillingChoice(sql, shell(false));
+    expect(choice.options).toEqual([
+      { id: "sample_line", label: "sample_line" },
+      { id: "cobalt_line", label: "cobalt_line" },
+      { id: "northbay_line", label: "northbay_line (do not pursue)" },
+    ]);
+    expect(choice.chosenPartyId).toBe("sample_line");
+    expect(choice.canBackfill).toBe(false);
+    expect(sql.calls.some((call) => call.text.includes("ORDER BY version DESC") && call.text.includes("LIMIT 1"))).toBe(
+      true,
+    );
+
+    const bare = fakeSql({ approved: true, settings: { version: 2, config: sampleConfig() }, parties: [] });
+    const backfill = await readBillingChoice(bare, shell(true));
+    expect(backfill.chosenPartyId).toBeNull();
+    expect(backfill.canBackfill).toBe(true);
   });
 });
 
-function fakeSql(options?: { decided?: boolean }): ReviewSql & {
+function shell(approved: boolean) {
+  return {
+    id: INVOICE,
+    customerId: CUSTOMER,
+    customer: "Harbor Home Goods",
+    invoiceNumber: "SYN-1002",
+    billingParty: "Sample Line Logistics",
+    billedParty: "Harbor Home Goods",
+    currency: "USD",
+    invoiceDate: "2026-02-25",
+    pageCount: 2,
+    documentHash: HASH,
+    rows: [],
+    lines: [],
+    decisions: approved
+      ? [
+          {
+            document_hash: HASH,
+            element_key: "charge_lines",
+            extracted_text: null,
+            outcome: "approved" as const,
+            page: null,
+            decided_by: "Ibrahim",
+            decided_at: AT,
+          },
+        ]
+      : [],
+    approved,
+  };
+}
+
+function party(partyId: string, version: number) {
+  return { payload: { invoice_id: INVOICE, party_id: partyId, settings_version: version } };
+}
+
+function sampleConfig(): CustomerConfig {
+  return customerConfigSchema.parse({
+    id: "harbor_home",
+    name: "Harbor Home Goods",
+    fee_pct: "0.25",
+    billed_party_role: "direct",
+    nvocc: null,
+    authorization: {
+      document: "auth.pdf",
+      signed_on: "2027-01-10",
+      valid_until: "2028-01-10",
+      covers: ["sample_line", "cobalt_line", "northbay_line"],
+    },
+    billing_parties: {
+      pursue: ["sample_line", "cobalt_line"],
+      do_not_pursue: ["northbay_line"],
+    },
+    lookback_from: "2022-06-16",
+    retention_days_after_close: 730,
+  });
+}
+
+function fakeSql(options?: {
+  decided?: boolean;
+  approved?: boolean;
+  approvalParty?: string;
+  settings?: { version: number; config: CustomerConfig } | null;
+  parties?: { payload: unknown }[];
+}): ReviewSql & {
   calls: { text: string; values: readonly unknown[] }[];
   elementRows: StoredElement[];
+  parties: { payload: unknown }[];
 } {
   const calls: { text: string; values: readonly unknown[] }[] = [];
   const elementRows = ELEMENT_KEYS.map((key) => stored(key));
-  const decisions =
-    options?.decided === true
+  const parties = options?.parties ?? [];
+  const decisions = [
+    ...(options?.decided === true
       ? [
           {
             payload: {
@@ -93,13 +334,43 @@ function fakeSql(options?: { decided?: boolean }): ReviewSql & {
             },
           },
         ]
-      : [];
+      : []),
+    ...(options?.approved === true
+      ? [
+          {
+            payload: {
+              document_hash: HASH,
+              element_key: "charge_lines",
+              extracted_text: null,
+              outcome: "approved",
+              page: null,
+              decided_by: "Ibrahim",
+              decided_at: AT,
+              ...(options.approvalParty === undefined
+                ? {}
+                : { party_id: options.approvalParty, settings_version: 1 }),
+            },
+          },
+        ]
+      : []),
+  ];
   return {
     calls,
     elementRows,
+    parties,
     async query<T extends Record<string, unknown>>(text: string, values?: readonly unknown[]) {
       calls.push({ text, values: values ?? [] });
       if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return { rows: [] as T[] };
+      if (text.includes("CustomerConfigVersion")) {
+        const settings = options?.settings;
+        if (settings === undefined || settings === null) return { rows: [] as T[] };
+        return { rows: [{ version: settings.version, config: settings.config }] as unknown as T[] };
+      }
+      if (text.includes("billing_party_set") && text.includes("INSERT")) {
+        parties.push({ payload: JSON.parse(String(values?.[3])) as unknown });
+        return { rows: [] as T[] };
+      }
+      if (text.includes("billing_party_set")) return { rows: parties as unknown as T[] };
       if (text.includes("FOR UPDATE") || text.includes('FROM "Invoice"')) {
         return {
           rows: [

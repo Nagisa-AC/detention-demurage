@@ -9,6 +9,7 @@ import {
   isConfirmedAbsent,
   loadReview,
   ReviewError,
+  savedDecisionSchema,
   startReview,
   type SavedDecision,
 } from "./review.js";
@@ -326,3 +327,26 @@ function pagesFromPrinted(truth: FixtureTruth): PageExtraction[] {
     }),
   ];
 }
+
+describe("saved decisions", () => {
+  const approved = {
+    document_hash: "ab".repeat(32),
+    element_key: "charge_lines",
+    extracted_text: null,
+    outcome: "approved" as const,
+    page: null,
+    decided_by: "Reviewer",
+    decided_at: "2026-11-17T20:00:00.000Z",
+  };
+
+  it("still reads an approval that has no billing party", () => {
+    expect(savedDecisionSchema.parse(approved)).toEqual(approved);
+  });
+
+  it("keeps the party and settings version recorded on an approval", () => {
+    expect(savedDecisionSchema.parse({ ...approved, party_id: "sample_line", settings_version: 2 })).toMatchObject({
+      party_id: "sample_line",
+      settings_version: 2,
+    });
+  });
+});

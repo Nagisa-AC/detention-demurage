@@ -622,6 +622,40 @@ a.queue-row:hover {
   margin-left: auto;
 }
 
+.bar-approve {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.billing-party {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  font-size: 13px;
+  color: #3D4350;
+}
+
+.billing-party label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.billing-party select {
+  font: inherit;
+  font-size: 14px;
+  color: #14181F;
+  background: #FFFFFF;
+  border: 1px solid #C9CED8;
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+}
+
 .bar-form label {
   display: flex;
   flex-direction: column;

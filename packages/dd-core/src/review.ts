@@ -59,6 +59,8 @@ export const savedDecisionSchema = z.strictObject({
   after: z.string().min(1).exactOptional(),
   decided_by: z.string().min(1),
   decided_at: z.string().min(1),
+  party_id: z.string().min(1).exactOptional(),
+  settings_version: z.int().positive().exactOptional(),
 });
 
 export type SavedDecision = z.infer<typeof savedDecisionSchema>;
