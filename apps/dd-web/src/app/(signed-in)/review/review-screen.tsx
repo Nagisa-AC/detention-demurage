@@ -4,7 +4,7 @@ import { useState } from "react";
 import { elementStateSummary, formatAmount } from "../../../review-format";
 import { approveInvoice } from "./actions";
 import { PdfPane } from "./pdf-pane";
-import { DecisionBar } from "./decision-bar";
+import { DecisionBar, type PartyChoice } from "./decision-bar";
 
 export type ScreenElement = {
   key: string;
@@ -51,6 +51,9 @@ export function ReviewScreen({
   elements,
   lines,
   approved,
+  partyOptions,
+  chosenPartyId,
+  canBackfill,
 }: {
   invoiceId: string;
   customerId: string;
@@ -66,6 +69,9 @@ export function ReviewScreen({
   elements: ScreenElement[];
   lines: ScreenLine[];
   approved: boolean;
+  partyOptions: readonly PartyChoice[];
+  chosenPartyId: string | null;
+  canBackfill: boolean;
 }) {
   const [page, setPage] = useState(1);
   const [viewed, setViewed] = useState<ReadonlySet<number>>(() => new Set());
@@ -177,6 +183,10 @@ export function ReviewScreen({
           const result = await approveInvoice(invoiceId, [...viewed]);
           setMessage(result.message);
         }}
+        printedName={billingParty}
+        partyOptions={partyOptions}
+        chosenPartyId={chosenPartyId}
+        canBackfill={canBackfill}
       />
     </div>
   );

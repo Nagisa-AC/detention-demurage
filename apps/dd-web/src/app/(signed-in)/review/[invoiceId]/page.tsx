@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { ReviewError } from "dd-core";
-import { readInvoice, readQueue, withReviewDb } from "../../../../review-data";
+import { readBillingChoice, readInvoice, readQueue, withReviewDb } from "../../../../review-data";
 import { formatAmount, sumAmounts } from "../../../../review-format";
 import { presentReview } from "../../../../review-view";
 import { requireSession } from "../../../../session";
@@ -17,10 +17,11 @@ export default async function InvoiceReviewPage({ params }: { params: Promise<{ 
     const invoice = await readInvoice(sql, invoiceId);
     if (invoice === null) return null;
     const queue = await readQueue(sql);
-    return { invoice, queue };
+    const billing = await readBillingChoice(sql, invoice);
+    return { invoice, queue, billing };
   });
   if (loaded === null) notFound();
-  const { invoice, queue } = loaded;
+  const { invoice, queue, billing } = loaded;
   let replay: ReturnType<typeof presentReview>;
   try {
     replay = presentReview({
@@ -73,6 +74,9 @@ export default async function InvoiceReviewPage({ params }: { params: Promise<{ 
         elements={replay.elements}
         lines={invoice.lines}
         approved={invoice.approved}
+        partyOptions={billing.options}
+        chosenPartyId={billing.chosenPartyId}
+        canBackfill={billing.canBackfill}
       />
     </Shell>
   );

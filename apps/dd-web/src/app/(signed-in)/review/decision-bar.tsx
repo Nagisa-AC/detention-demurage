@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
-import { decideElement, type ReviewActionState } from "./actions";
+import { decideElement, setBillingParty, type ReviewActionState } from "./actions";
 import type { ScreenElement } from "./review-screen";
+
+export type PartyChoice = { id: string; label: string };
 
 export function DecisionBar({
   invoiceId,
@@ -15,6 +17,10 @@ export function DecisionBar({
   message,
   onMessage,
   onApprove,
+  printedName,
+  partyOptions,
+  chosenPartyId,
+  canBackfill,
 }: {
   invoiceId: string;
   selected: ScreenElement | null;
@@ -25,6 +31,10 @@ export function DecisionBar({
   message: string;
   onMessage: (message: string) => void;
   onApprove: () => Promise<void>;
+  printedName: string;
+  partyOptions: readonly PartyChoice[];
+  chosenPartyId: string | null;
+  canBackfill: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const ready = !approved && openCount === 0 && covers(viewed, pageCount);
@@ -48,20 +58,31 @@ export function DecisionBar({
         {showDecision && selected !== null ? (
           <DecisionForm key={selected.key} invoiceId={invoiceId} selected={selected} onMessage={onMessage} />
         ) : null}
-        {approved ? null : (
-          <button
-            type="button"
-            className="btn primary"
-            disabled={!ready || busy}
-            onClick={() => {
-              if (!ready || busy) return;
-              setBusy(true);
-              onApprove().finally(() => setBusy(false));
-            }}
-          >
-            Approve invoice
-          </button>
-        )}
+        <div className="bar-approve">
+          <BillingParty
+            invoiceId={invoiceId}
+            printedName={printedName}
+            partyOptions={partyOptions}
+            chosenPartyId={chosenPartyId}
+            approved={approved}
+            canBackfill={canBackfill}
+            onMessage={onMessage}
+          />
+          {approved ? null : (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!ready || busy}
+              onClick={() => {
+                if (!ready || busy) return;
+                setBusy(true);
+                onApprove().finally(() => setBusy(false));
+              }}
+            >
+              Approve invoice
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -158,6 +179,147 @@ function Submit({
     <button type="submit" name={name} value={value} className={className} disabled={status.pending}>
       {children}
     </button>
+  );
+}
+
+function BillingParty({
+  invoiceId,
+  printedName,
+  partyOptions,
+  chosenPartyId,
+  approved,
+  canBackfill,
+  onMessage,
+}: {
+  invoiceId: string;
+  printedName: string;
+  partyOptions: readonly PartyChoice[];
+  chosenPartyId: string | null;
+  approved: boolean;
+  canBackfill: boolean;
+  onMessage: (message: string) => void;
+}) {
+  const printed = <span>Printed on the invoice: {printedName}</span>;
+  const known = partyOptions.find((option) => option.id === chosenPartyId);
+  if (approved && !canBackfill) {
+    return (
+      <div className="billing-party">
+        <span>Billing party: {known?.label ?? chosenPartyId ?? "not set"}</span>
+        {printed}
+      </div>
+    );
+  }
+  if (approved && canBackfill) {
+    return (
+      <div className="billing-party">
+        <span>Billing party: not set</span>
+        {printed}
+        {partyOptions.length === 0 ? (
+          <span>No settings yet.</span>
+        ) : (
+          <Backfill invoiceId={invoiceId} partyOptions={partyOptions} onMessage={onMessage} />
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="billing-party">
+      <label>
+        Billing party
+        {partyOptions.length === 0 ? (
+          <span>No settings yet.</span>
+        ) : (
+          <PartySelect
+            invoiceId={invoiceId}
+            partyOptions={partyOptions}
+            chosenPartyId={known === undefined ? "" : (chosenPartyId ?? "")}
+            onMessage={onMessage}
+          />
+        )}
+      </label>
+      {printed}
+    </div>
+  );
+}
+
+function PartySelect({
+  invoiceId,
+  partyOptions,
+  chosenPartyId,
+  onMessage,
+}: {
+  invoiceId: string;
+  partyOptions: readonly PartyChoice[];
+  chosenPartyId: string;
+  onMessage: (message: string) => void;
+}) {
+  const [pending, setPending] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const value = pending ?? chosenPartyId;
+  return (
+    <select
+      aria-label="Billing party"
+      value={value}
+      disabled={busy}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (next === "" || next === chosenPartyId || busy) return;
+        setPending(next);
+        setBusy(true);
+        setBillingParty(invoiceId, next, false)
+          .then((result) => onMessage(result.message))
+          .finally(() => {
+            setPending(null);
+            setBusy(false);
+          });
+      }}
+    >
+      <option value="">Choose a billing party</option>
+      {partyOptions.map((option) => (
+        <option key={option.id} value={option.id}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function Backfill({
+  invoiceId,
+  partyOptions,
+  onMessage,
+}: {
+  invoiceId: string;
+  partyOptions: readonly PartyChoice[];
+  onMessage: (message: string) => void;
+}) {
+  const [partyId, setPartyId] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <select aria-label="Billing party" value={partyId} disabled={busy} onChange={(event) => setPartyId(event.target.value)}>
+        <option value="">Choose a billing party</option>
+        {partyOptions.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="btn"
+        disabled={partyId === "" || busy}
+        onClick={() => {
+          if (partyId === "" || busy) return;
+          setBusy(true);
+          setBillingParty(invoiceId, partyId, true)
+            .then((result) => onMessage(result.message))
+            .finally(() => setBusy(false));
+        }}
+      >
+        Set billing party
+      </button>
+    </>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { ELEMENT_KEYS, type ElementKey } from "dd-core";
-import { recordApproval, recordDecision, withReviewDb } from "../../../review-data";
+import { recordApproval, recordBillingParty, recordDecision, withReviewDb } from "../../../review-data";
 import type { DecisionCommand } from "../../../review-view";
 import { requireSession } from "../../../session";
 
@@ -43,6 +43,27 @@ export async function approveInvoice(
   try {
     const result = await withReviewDb((sql) =>
       recordApproval(sql, { invoiceId, actor: session.name, at, acknowledgedPages }),
+    );
+    if (result === null) return { message: NOT_CONFIGURED };
+    if (!result.ok) return { message: result.message };
+  } catch {
+    return { message: NOT_SAVED };
+  }
+  revalidatePath("/review");
+  revalidatePath(`/review/${invoiceId}`);
+  return { message: "" };
+}
+
+export async function setBillingParty(
+  invoiceId: string,
+  partyId: string,
+  backfill: boolean,
+): Promise<ReviewActionState> {
+  const session = await requireSession({ path: "/review/billing-party" });
+  const at = new Date().toISOString();
+  try {
+    const result = await withReviewDb((sql) =>
+      recordBillingParty(sql, { invoiceId, partyId, actor: session.name, at, backfill }),
     );
     if (result === null) return { message: NOT_CONFIGURED };
     if (!result.ok) return { message: result.message };

@@ -152,11 +152,22 @@ export async function insertSettingsVersion(
   }
 }
 
+/** "0.25" is 25%. The fee stays a decimal string; this is display only. */
+export function feePercent(fee: string): string {
+  if (/^1(?:\.0+)?$/.test(fee)) return "100%";
+  const fraction = fee.split(".")[1] ?? "";
+  const padded = `${fraction}00`;
+  const head = padded.slice(0, 2);
+  const tail = padded.slice(2).replace(/0+$/, "");
+  const whole = head.replace(/^0+/, "") || "0";
+  return tail === "" ? `${whole}%` : `${whole}.${tail}%`;
+}
+
 export function settingsFacts(config: CustomerConfig): { label: string; value: string }[] {
   const terms = config.contract_terms?.length ?? 0;
   const termLabel = terms === 1 ? "1 contract term" : `${terms} contract terms`;
   return [
-    { label: "Fee", value: config.fee_pct },
+    { label: "Fee", value: feePercent(config.fee_pct) },
     {
       label: "Authorization",
       value: `signed ${config.authorization.signed_on}, valid until ${config.authorization.valid_until}`,
