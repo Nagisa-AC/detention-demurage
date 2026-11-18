@@ -65,6 +65,8 @@ model Invoice {
   invoiceDate   DateTime? @map("invoice_date") @db.Date
   dueDate       DateTime? @map("due_date") @db.Date
   pageCount     Int       @map("page_count")
+  /// Stitch fragments. Null until a read records them. An empty array means the stitch left none.
+  unresolved    Json?     @db.JsonB
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -119,7 +121,14 @@ model ChargeLine {
   amount      Decimal  @db.Decimal(12, 2)
   currency    String   @db.VarChar(3)
   /// True when every printed field was found on its page. False when the model returned text that was not found.
-  grounded    Boolean?
+  grounded      Boolean?
+  /// Null until a read records the page. A stored page is 1 or greater.
+  containerPage Int? @map("container_page")
+  fromPage      Int? @map("from_page")
+  toPage        Int? @map("to_page")
+  daysPage      Int? @map("days_page")
+  ratePage      Int? @map("rate_page")
+  amountPage    Int? @map("amount_page")
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   invoice  Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -129,7 +138,9 @@ model ChargeLine {
   @@map("ChargeLine")
 }
 
-/// page_records holds status, reason, attempts, and versions. It does not hold model text.
+/// Extract runs store a page-status array in page_records.
+/// A rules run stores the check summary there: settings version, invoice ids, not_evaluable, needs_info, and disputable totals.
+/// Neither holds model text.
 model ProcessingRun {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId     String    @map("customer_id") @db.Uuid

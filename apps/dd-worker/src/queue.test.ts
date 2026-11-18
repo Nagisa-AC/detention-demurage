@@ -217,9 +217,16 @@ describe("saved read", () => {
       amount: string;
       currency: string;
       grounded: boolean | null;
+      container_page: number | null;
+      from_page: number | null;
+      to_page: number | null;
+      days_page: number | null;
+      rate_page: number | null;
+      amount_page: number | null;
     }>(
       `SELECT line_id, container, charge, charged_from::text AS charged_from, charged_to::text AS charged_to,
-              days, rate::text AS rate, amount::text AS amount, currency, grounded
+              days, rate::text AS rate, amount::text AS amount, currency, grounded,
+              container_page, from_page, to_page, days_page, rate_page, amount_page
        FROM "ChargeLine"`,
     );
     expect(lines.rows).toEqual([
@@ -234,8 +241,18 @@ describe("saved read", () => {
         amount: "450.00",
         currency: "USD",
         grounded: true,
+        container_page: 1,
+        from_page: 1,
+        to_page: 1,
+        days_page: 1,
+        rate_page: 1,
+        amount_page: 1,
       },
     ]);
+    const unresolved = await pool.query<{ unresolved: unknown }>(`SELECT unresolved FROM "Invoice" WHERE id = $1`, [
+      invoiceId,
+    ]);
+    expect(unresolved.rows[0]?.unresolved).toEqual([]);
 
     const run = await pool.query<{ invoice_id: string | null; finished_at: Date | null; lease_token: string | null; page_records: unknown }>(
       `SELECT invoice_id, finished_at, lease_token, page_records FROM "ProcessingRun" WHERE id = $1`,
@@ -378,6 +395,12 @@ describe("saved read", () => {
     const claimed = await seed("save_once", hash);
     const result = await readFixture(pdf, hash, pagesFromFixture("clean"));
     await finishRun(pool, claimed, { ...result, permanent: true });
+    await pool.query(
+      `UPDATE "ChargeLine"
+       SET container_page = NULL, from_page = NULL, to_page = NULL,
+           days_page = NULL, rate_page = NULL, amount_page = NULL`,
+    );
+    await pool.query(`UPDATE "Invoice" SET unresolved = NULL`);
     expect(await requeueRun(pool, claimed.id)).toBe(true);
     const again = await claimNext(pool, 3600);
     if (again === null) throw new Error("missing reclaim");
@@ -387,8 +410,14 @@ describe("saved read", () => {
     const second = await readFixture(pdf, hash, [changed]);
     expect(second.read?.invoiceNumber).toBe("SYN-CHANGED");
     await finishRun(pool, again, { ...second, permanent: true });
-    const invoices = await pool.query<{ invoice_number: string }>(`SELECT invoice_number FROM "Invoice"`);
-    expect(invoices.rows).toEqual([{ invoice_number: "SYN-1001" }]);
+    const invoices = await pool.query<{ invoice_number: string; unresolved: unknown }>(
+      `SELECT invoice_number, unresolved FROM "Invoice"`,
+    );
+    expect(invoices.rows).toEqual([{ invoice_number: "SYN-1001", unresolved: [] }]);
+    const pages = await pool.query<{ container_page: number | null; amount_page: number | null }>(
+      `SELECT container_page, amount_page FROM "ChargeLine"`,
+    );
+    expect(pages.rows).toEqual([{ container_page: 1, amount_page: 1 }]);
     expect(await counts()).toEqual({ invoices: 1, elements: 20, lines: 1 });
   });
 

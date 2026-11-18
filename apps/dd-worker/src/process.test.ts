@@ -195,8 +195,15 @@ describe("processDocument", () => {
         amount: "450.00",
         currency: "USD",
         grounded: true,
+        containerPage: 1,
+        fromPage: 1,
+        toPage: 1,
+        daysPage: 1,
+        ratePage: 1,
+        amountPage: 1,
       },
     ]);
+    expect(saved.unresolved).toEqual([]);
     expect(JSON.stringify(result.pages)).not.toContain("SYN-1001");
   });
 

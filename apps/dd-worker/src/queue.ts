@@ -132,6 +132,8 @@ export async function finishRun(
     let invoiceId = row.invoice_id;
     if (input.finish === "ok" && input.read !== undefined && invoiceId === null) {
       invoiceId = await insertRead(client, claimed, input.read);
+    } else if (input.finish === "ok" && input.read !== undefined && invoiceId !== null) {
+      await refreshRead(client, invoiceId, input.read);
     }
     const updated = await client.query(
       `UPDATE "ProcessingRun"
@@ -169,9 +171,9 @@ async function insertRead(client: PoolClient, claimed: ClaimedRun, read: SavedRe
   const invoice = await client.query<{ id: string }>(
     `INSERT INTO "Invoice" (
        customer_id, document_id, invoice_number, billing_party, billed_party,
-       currency, invoice_date, due_date, page_count
+       currency, invoice_date, due_date, page_count, unresolved
      )
-     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::date, $8::date, $9)
+     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::date, $8::date, $9, $10::jsonb)
      RETURNING id`,
     [
       claimed.customerId,
@@ -183,6 +185,7 @@ async function insertRead(client: PoolClient, claimed: ClaimedRun, read: SavedRe
       read.invoiceDate,
       read.dueDate,
       read.pageCount,
+      JSON.stringify(read.unresolved),
     ],
   );
   const invoiceId = invoice.rows[0]?.id;
@@ -217,11 +220,13 @@ async function insertRead(client: PoolClient, claimed: ClaimedRun, read: SavedRe
     await client.query(
       `INSERT INTO "ChargeLine" (
          customer_id, invoice_id, line_id, container, charge,
-         charged_from, charged_to, days, rate, amount, currency, grounded
+         charged_from, charged_to, days, rate, amount, currency, grounded,
+         container_page, from_page, to_page, days_page, rate_page, amount_page
        )
        VALUES (
          $1::uuid, $2::uuid, $3, $4, $5,
-         $6::date, $7::date, $8, $9::numeric, $10::numeric, $11, $12
+         $6::date, $7::date, $8, $9::numeric, $10::numeric, $11, $12,
+         $13, $14, $15, $16, $17, $18
        )`,
       [
         claimed.customerId,
@@ -236,8 +241,44 @@ async function insertRead(client: PoolClient, claimed: ClaimedRun, read: SavedRe
         line.amount,
         line.currency,
         line.grounded,
+        line.containerPage,
+        line.fromPage,
+        line.toPage,
+        line.daysPage,
+        line.ratePage,
+        line.amountPage,
       ],
     );
   }
   return invoiceId;
+}
+
+/** A requeue keeps the invoice. It writes the pages and fragments the fresh read actually produced. */
+async function refreshRead(client: PoolClient, invoiceId: string, read: SavedRead): Promise<void> {
+  await client.query(`UPDATE "Invoice" SET unresolved = $2::jsonb WHERE id = $1::uuid`, [
+    invoiceId,
+    JSON.stringify(read.unresolved),
+  ]);
+  for (const line of read.lines) {
+    await client.query(
+      `UPDATE "ChargeLine"
+       SET container_page = $3,
+           from_page = $4,
+           to_page = $5,
+           days_page = $6,
+           rate_page = $7,
+           amount_page = $8
+       WHERE invoice_id = $1::uuid AND line_id = $2`,
+      [
+        invoiceId,
+        line.lineId,
+        line.containerPage,
+        line.fromPage,
+        line.toPage,
+        line.daysPage,
+        line.ratePage,
+        line.amountPage,
+      ],
+    );
+  }
 }

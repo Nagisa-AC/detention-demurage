@@ -10,6 +10,7 @@ import {
   type PageExtraction,
   type StitchedChargeLine,
   type StitchedInvoice,
+  type UnresolvedFragment,
 } from "dd-core";
 import { NormalizeError } from "./errors.js";
 import { groundValue } from "./ground.js";
@@ -42,6 +43,12 @@ export type SavedLine = {
   amount: string;
   currency: string;
   grounded: boolean;
+  containerPage: number;
+  fromPage: number;
+  toPage: number;
+  daysPage: number;
+  ratePage: number;
+  amountPage: number;
 };
 
 export type SavedRead = {
@@ -54,6 +61,7 @@ export type SavedRead = {
   pageCount: number;
   elements: SavedElement[];
   lines: SavedLine[];
+  unresolved: UnresolvedFragment[];
 };
 
 /**
@@ -74,6 +82,7 @@ export function assembleRead(pages: readonly PageExtraction[], pageTexts: readon
     pageCount: pageCount(pageTexts),
     elements: ELEMENT_KEYS.map((key) => savedElement(key, elements[key], pageTexts)),
     lines: stitched.charge_lines.map((line) => savedLine(line, currency, pageTexts)),
+    unresolved: stitched.unresolved,
   };
 }
 
@@ -147,18 +156,34 @@ function savedLine(line: StitchedChargeLine, currency: string, pageTexts: readon
   if (charge !== "demurrage" && charge !== "detention") throw new NormalizeError();
   const container = line.container.text.trim();
   if (container.length === 0) throw new NormalizeError();
+  const from = line.charged_from;
+  const to = line.charged_to;
+  const days = line.days;
+  const rate = line.rate;
+  if (from === undefined || to === undefined || days === undefined || rate === undefined) throw new NormalizeError();
   return {
     lineId: line.id,
     container,
     charge,
-    chargedFrom: requiredDate(line.charged_from?.text),
-    chargedTo: requiredDate(line.charged_to?.text),
-    days: requiredDays(line.days?.text),
-    rate: requiredMoney(line.rate?.text, currency),
+    chargedFrom: requiredDate(from.text),
+    chargedTo: requiredDate(to.text),
+    days: requiredDays(days.text),
+    rate: requiredMoney(rate.text, currency),
     amount: requiredMoney(line.amount.text, currency),
     currency,
     grounded: lineGrounded(line, pageTexts),
+    containerPage: requiredPage(line.container.page),
+    fromPage: requiredPage(from.page),
+    toPage: requiredPage(to.page),
+    daysPage: requiredPage(days.page),
+    ratePage: requiredPage(rate.page),
+    amountPage: requiredPage(line.amount.page),
   };
+}
+
+function requiredPage(page: number): number {
+  if (!Number.isInteger(page) || page < 1) throw new NormalizeError();
+  return page;
 }
 
 function lineGrounded(line: StitchedChargeLine, pageTexts: readonly string[]): boolean {
