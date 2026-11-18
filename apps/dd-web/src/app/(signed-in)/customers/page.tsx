@@ -1,3 +1,4 @@
+import { readLatestChecks } from "../../../rules-run";
 import { readCustomerSettings } from "../../../settings";
 import { requireSession } from "../../../session";
 import { Shell } from "../../../shell";
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
 export default async function CustomersPage() {
   const session = await requireSession({ path: "/customers" });
   const settings = await readCustomerSettings();
+  const checks = await readLatestChecks();
   const customers = settings.map((customer) => ({ id: customer.id, displayName: customer.displayName }));
   return (
     <Shell session={session} active="customers">
@@ -18,7 +20,7 @@ export default async function CustomersPage() {
         <AddCustomerForm />
         {customers.length === 0 ? <p>No customers yet.</p> : <UploadForm customers={customers} />}
         {settings.map((customer) => (
-          <SettingsPanel key={customer.id} customer={customer} />
+          <SettingsPanel key={customer.id} customer={customer} checks={checks.get(customer.id) ?? null} />
         ))}
       </div>
     </Shell>

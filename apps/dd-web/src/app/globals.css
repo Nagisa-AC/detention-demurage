@@ -231,6 +231,14 @@ a:hover {
   margin: 0;
 }
 
+.latest-checks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+}
+
 .settings dl {
   display: grid;
   gap: 8px;

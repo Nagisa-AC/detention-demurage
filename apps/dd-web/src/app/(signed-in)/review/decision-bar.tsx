@@ -255,32 +255,41 @@ function PartySelect({
 }) {
   const [pending, setPending] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
   const value = pending ?? chosenPartyId;
   return (
-    <select
-      aria-label="Billing party"
-      value={value}
-      disabled={busy}
-      onChange={(event) => {
-        const next = event.target.value;
-        if (next === "" || next === chosenPartyId || busy) return;
-        setPending(next);
-        setBusy(true);
-        setBillingParty(invoiceId, next, false)
-          .then((result) => onMessage(result.message))
-          .finally(() => {
-            setPending(null);
-            setBusy(false);
-          });
-      }}
-    >
-      <option value="">Choose a billing party</option>
-      {partyOptions.map((option) => (
-        <option key={option.id} value={option.id}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <>
+      <select
+        aria-label="Billing party"
+        value={value}
+        disabled={busy}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (next === "" || next === chosenPartyId || busy) return;
+          setPending(next);
+          setStatus("");
+          setBusy(true);
+          setBillingParty(invoiceId, next, false)
+            .then((result) => {
+              const saved = result.message === "";
+              setStatus(saved ? "Saved" : result.message);
+              onMessage(saved ? "" : result.message);
+            })
+            .finally(() => {
+              setPending(null);
+              setBusy(false);
+            });
+        }}
+      >
+        <option value="">Choose a billing party</option>
+        {partyOptions.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {status === "" ? null : <span role="status">{status}</span>}
+    </>
   );
 }
 
@@ -295,9 +304,18 @@ function Backfill({
 }) {
   const [partyId, setPartyId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
   return (
     <>
-      <select aria-label="Billing party" value={partyId} disabled={busy} onChange={(event) => setPartyId(event.target.value)}>
+      <select
+        aria-label="Billing party"
+        value={partyId}
+        disabled={busy}
+        onChange={(event) => {
+          setPartyId(event.target.value);
+          setStatus("");
+        }}
+      >
         <option value="">Choose a billing party</option>
         {partyOptions.map((option) => (
           <option key={option.id} value={option.id}>
@@ -313,12 +331,17 @@ function Backfill({
           if (partyId === "" || busy) return;
           setBusy(true);
           setBillingParty(invoiceId, partyId, true)
-            .then((result) => onMessage(result.message))
+            .then((result) => {
+              const saved = result.message === "";
+              setStatus(saved ? "Saved" : result.message);
+              onMessage(saved ? "" : result.message);
+            })
             .finally(() => setBusy(false));
         }}
       >
         Set billing party
       </button>
+      {status === "" ? null : <span role="status">{status}</span>}
     </>
   );
 }

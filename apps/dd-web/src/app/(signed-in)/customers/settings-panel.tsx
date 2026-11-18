@@ -1,7 +1,9 @@
+import type { LatestChecks } from "../../../rules-run";
 import { formatSavedAt, settingsFacts, type CustomerSettings } from "../../../settings";
+import { rerunChecks } from "./rerun-checks";
 import { SettingsForm } from "./settings-form";
 
-export function SettingsPanel({ customer }: { customer: CustomerSettings }) {
+export function SettingsPanel({ customer, checks }: { customer: CustomerSettings; checks: LatestChecks | null }) {
   const current = customer.versions[0];
   return (
     <section className="settings" aria-label={`Settings for ${customer.displayName}`}>
@@ -9,6 +11,7 @@ export function SettingsPanel({ customer }: { customer: CustomerSettings }) {
       <p>
         {customer.displayName} · {customer.configId}
       </p>
+      <LatestChecksLine customerId={customer.id} checks={checks} />
       {current === undefined ? (
         <p>No settings yet.</p>
       ) : current.config === null ? (
@@ -38,5 +41,28 @@ export function SettingsPanel({ customer }: { customer: CustomerSettings }) {
       )}
       <SettingsForm customerId={customer.id} />
     </section>
+  );
+}
+
+function LatestChecksLine({ customerId, checks }: { customerId: string; checks: LatestChecks | null }) {
+  if (checks === null) return null;
+  if (checks.status === "failed") {
+    return (
+      <div className="latest-checks">
+        <span>Checks failed — run again</span>
+        <form action={rerunChecks}>
+          <input type="hidden" name="customerId" value={customerId} />
+          <button type="submit" className="btn">
+            Run again
+          </button>
+        </form>
+      </div>
+    );
+  }
+  const count = checks.findings === 1 ? "1 finding" : `${checks.findings} findings`;
+  return (
+    <p className="latest-checks">
+      Latest checks: {formatSavedAt(checks.ranAt)} · {count} · day 1 {checks.day1} · day 0 {checks.day0}
+    </p>
   );
 }

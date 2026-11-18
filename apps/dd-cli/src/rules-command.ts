@@ -86,7 +86,7 @@ function loadHistory(root: string): Reviewed[] {
           problems.push(`${label} has no invoice number.`);
           continue;
         }
-        reviewed.push({ runId, hash: document.sha256, invoice: toRun(review, runId) });
+        reviewed.push({ runId, hash: document.sha256, invoice: toRunInvoice(review, runId) });
       } catch (error) {
         if (error instanceof CliError) throw error;
         problems.push(`${label} has no finished review.`);
@@ -111,7 +111,7 @@ function peekInvoiceNumber(preparedPath: string): string {
   }
 }
 
-function toRun(review: ReviewResult, runId: string): RunInvoice {
+export function toRunInvoice(review: ReviewResult, runId: string): RunInvoice {
   const stitched = review.invoice;
   return {
     invoice_number: stitched.invoice_number?.text ?? "",

@@ -496,6 +496,57 @@ describe("database", () => {
     );
     expect(run.rows[0]).toEqual({ attempts: 0, page_records: null });
   });
+
+  it("leaves charge-line pages and unresolved fragments null until a read records them", async () => {
+    const columns = await owner.query<{ column_name: string; is_nullable: string }>(
+      `SELECT column_name, is_nullable
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'ChargeLine'
+         AND column_name IN ('container_page', 'from_page', 'to_page', 'days_page', 'rate_page', 'amount_page')
+       ORDER BY column_name`,
+    );
+    expect(columns.rows).toEqual([
+      { column_name: "amount_page", is_nullable: "YES" },
+      { column_name: "container_page", is_nullable: "YES" },
+      { column_name: "days_page", is_nullable: "YES" },
+      { column_name: "from_page", is_nullable: "YES" },
+      { column_name: "rate_page", is_nullable: "YES" },
+      { column_name: "to_page", is_nullable: "YES" },
+    ]);
+    const unresolved = await owner.query<{ is_nullable: string; column_default: string | null }>(
+      `SELECT is_nullable, column_default
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'Invoice' AND column_name = 'unresolved'`,
+    );
+    expect(unresolved.rows).toEqual([{ is_nullable: "YES", column_default: null }]);
+
+    const invoiceId = await insertInvoice();
+    await app.query(
+      `INSERT INTO "ChargeLine" (
+         customer_id, invoice_id, line_id, container, charge,
+         charged_from, charged_to, days, rate, amount, currency
+       )
+       SELECT customer_id, id, 'ln_1', 'SLLU0000027', 'demurrage',
+              DATE '2026-01-01', DATE '2026-01-02', 2, numeric '10.00', numeric '20.00', 'USD'
+       FROM "Invoice" WHERE id = $1`,
+      [invoiceId],
+    );
+    const stored = await app.query<{
+      container_page: number | null;
+      unresolved: unknown;
+    }>(
+      `SELECT l.container_page, i.unresolved
+       FROM "ChargeLine" l
+       JOIN "Invoice" i ON i.id = l.invoice_id
+       WHERE l.invoice_id = $1`,
+      [invoiceId],
+    );
+    expect(stored.rows).toEqual([{ container_page: null, unresolved: null }]);
+    await expectSqlState(
+      app.query(`UPDATE "ChargeLine" SET container_page = 0 WHERE invoice_id = $1`, [invoiceId]),
+      "23514",
+    );
+  });
 });
 
 function settingsSql(): SettingsSql {

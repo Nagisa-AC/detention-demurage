@@ -8,7 +8,7 @@ const appSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const webRoot = path.resolve(appSrc, "..");
 
 describe("dd-web boundary", () => {
-  it("depends on dd-core and does not import dd-extract or define runRules", () => {
+  it("depends on dd-core and does not import dd-extract or the model SDK", () => {
     expect(rulesPackage).toBe("dd-core");
     const pkg = JSON.parse(fs.readFileSync(path.join(webRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
@@ -23,7 +23,6 @@ describe("dd-web boundary", () => {
         text.includes("dd-extract") ||
         text.includes("@anthropic-ai/sdk") ||
         text.includes("packages/extract") ||
-        text.includes("runRules") ||
         text.includes("dangerouslySetInnerHTML")
       );
     });
@@ -64,6 +63,7 @@ describe("dd-web boundary", () => {
     expect(actions.map(rel).sort()).toEqual([
       "(signed-in)/account.ts",
       "(signed-in)/customers/create-customer.ts",
+      "(signed-in)/customers/rerun-checks.ts",
       "(signed-in)/customers/save-settings.ts",
       "(signed-in)/review/actions.ts",
       "(signed-in)/sign-out.ts",

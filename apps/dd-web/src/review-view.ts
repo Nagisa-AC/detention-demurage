@@ -159,6 +159,36 @@ export function presentReview(input: {
   return { elements, openCount: elements.filter((element) => element.needsDecision).length };
 }
 
+/**
+ * The review screen's replay, then brand each confirmed absence.
+ * carryDecisions does not brand those, and the rules only see a branded absence.
+ */
+export function replayedElements(input: {
+  documentHash: string;
+  header: ReviewHeader;
+  rows: readonly StoredElement[];
+  decisions: readonly SavedDecision[];
+}): Record<ElementKey, ReviewedElement> {
+  const packed = elementRecord(input.rows);
+  const session = openSession({
+    documentHash: input.documentHash,
+    header: input.header,
+    elements: packed.record,
+    actor: "replay",
+    at: "2026-01-01T00:00:00.000Z",
+    prior: input.decisions,
+  });
+  for (let page = 1; page <= input.header.pageCount; page += 1) session.acknowledge(page);
+  for (const decision of input.decisions) {
+    if (decision.outcome !== "confirmed_absent") continue;
+    if (!isElementKey(decision.element_key)) throw new ReviewError("That decision is not an element.");
+    const current = session.view().elements[decision.element_key];
+    if (isConfirmedAbsent(current)) continue;
+    session.confirmAbsent(decision.element_key);
+  }
+  return session.view().elements;
+}
+
 export function pagesCovered(pages: readonly number[], pageCount: number): boolean {
   if (!Number.isInteger(pageCount) || pageCount < 1) return false;
   const seen = new Set<number>();

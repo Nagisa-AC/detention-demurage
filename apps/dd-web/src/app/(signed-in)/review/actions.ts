@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ELEMENT_KEYS, type ElementKey } from "dd-core";
 import { recordApproval, recordBillingParty, recordDecision, withReviewDb } from "../../../review-data";
+import { runChecksForInvoice } from "../../../rules-run";
 import type { DecisionCommand } from "../../../review-view";
 import { requireSession } from "../../../session";
 
@@ -49,8 +50,14 @@ export async function approveInvoice(
   } catch {
     return { message: NOT_SAVED };
   }
+  try {
+    await withReviewDb((sql) => runChecksForInvoice(sql, invoiceId));
+  } catch {
+    // The approval is already committed. The customer page shows the failed run.
+  }
   revalidatePath("/review");
   revalidatePath(`/review/${invoiceId}`);
+  revalidatePath("/customers");
   return { message: "" };
 }
 
