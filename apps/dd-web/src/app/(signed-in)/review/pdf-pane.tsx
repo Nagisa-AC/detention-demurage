@@ -11,17 +11,21 @@ export function PdfPane({
   pageCount,
   page,
   query,
+  queries,
   onPage,
   onViewed,
   viewedCount,
+  caption,
 }: {
   url: string;
   pageCount: number;
   page: number;
   query: string;
+  queries?: readonly string[];
   onPage: (page: number) => void;
   onViewed: (page: number) => void;
   viewedCount: number;
+  caption?: string;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -53,7 +57,8 @@ export function PdfPane({
     const layer = layerRef.current;
     if (canvas === null || layer === null || width < 1) return;
     setFailed(false);
-    const drawing = drawPage(canvas, layer, url, page, query, width, setZoom);
+    const wanted = queries ?? [query];
+    const drawing = drawPage(canvas, layer, url, page, wanted, width, setZoom);
     drawing.done
       .then(() => {
         if (!drawing.cancelled()) onViewedRef.current(page);
@@ -62,7 +67,7 @@ export function PdfPane({
         if (!drawing.cancelled()) setFailed(true);
       });
     return () => drawing.cancel();
-  }, [url, page, query, width]);
+  }, [url, page, query, queries, width]);
 
   return (
     <div>
@@ -85,7 +90,7 @@ export function PdfPane({
           <div ref={layerRef} className="textLayer" />
         </div>
       </div>
-      <p className="cap">A blue outline marks where the selected value was read.</p>
+      <p className="cap">{caption ?? "A blue outline marks where the selected value was read."}</p>
     </div>
   );
 }
@@ -113,7 +118,7 @@ function drawPage(
   layer: HTMLDivElement,
   url: string,
   page: number,
-  query: string,
+  queries: readonly string[],
   width: number,
   onZoom: (zoom: number) => void,
 ): { cancel: () => void; cancelled: () => boolean; done: Promise<void> } {
@@ -148,14 +153,18 @@ function drawPage(
     if (stopped) return;
     onZoom(Math.round(scale * 100));
     layer.replaceChildren();
-    layer.style.width = `${viewport.width}px`;
-    layer.style.height = `${viewport.height}px`;
+    layer.style.setProperty("--scale-factor", String(viewport.scale));
+    layer.style.setProperty("--user-unit", String(viewport.userUnit));
+    layer.style.setProperty("--total-scale-factor", String(viewport.scale * viewport.userUnit));
+    layer.style.setProperty("--scale-round-x", "1px");
+    layer.style.setProperty("--scale-round-y", "1px");
     const text = await pdfPage.getTextContent();
     if (stopped) return;
     const textLayer = new pdfjs.TextLayer({ textContentSource: text, container: layer, viewport });
     await textLayer.render();
     if (stopped) return;
-    const hits = new Set(matchingIndexes(textLayer.textDivs.map((div) => div.textContent ?? ""), query));
+    const parts = textLayer.textDivs.map((div) => div.textContent ?? "");
+    const hits = new Set(queries.flatMap((item) => matchingIndexes(parts, item)));
     textLayer.textDivs.forEach((div, index) => {
       if (hits.has(index)) div.classList.add("hit");
     });

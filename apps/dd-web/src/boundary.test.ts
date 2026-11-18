@@ -35,6 +35,7 @@ describe("dd-web boundary", () => {
     const pages = files.filter((file) => file.endsWith("page.tsx") && file.includes(`${path.sep}(signed-in)${path.sep}`));
     expect(pages.map(rel).sort()).toEqual([
       "(signed-in)/cases/page.tsx",
+      "(signed-in)/customers/[customerId]/findings/[findingId]/page.tsx",
       "(signed-in)/customers/[customerId]/page.tsx",
       "(signed-in)/customers/[customerId]/settings/page.tsx",
       "(signed-in)/customers/page.tsx",

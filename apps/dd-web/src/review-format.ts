@@ -17,6 +17,18 @@ export function sumAmounts(amounts: readonly string[]): string | null {
     if (parsed === null) return null;
     cents += parsed;
   }
+  return fromCents(cents);
+}
+
+/** Billed minus one stored disputable amount. Display only; this is not the rules total. */
+export function minusAmount(billed: string, disputable: string): string | null {
+  const left = centsOf(billed);
+  const right = centsOf(disputable);
+  if (left === null || right === null) return null;
+  return fromCents(left - right);
+}
+
+function fromCents(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(cents);
   return formatAmount(`${sign}${Math.trunc(abs / 100)}.${String(abs % 100).padStart(2, "0")}`);
