@@ -1,0 +1,227 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Harbor Home Goods</title><style>
+:root{--bg:#111110;--panel:#171715;--panel2:#1C1C19;--line:#2A2A26;--line2:#232320;--ink:#ECECE6;--mute:#8E8E85;--dim:#62625B;--accent:#E8A87C;--accentInk:#1A120C;--good:#16352A;--goodInk:#CDEBDC;--warn:#3A2A14;--warnInk:#F1C98F;--chip:#262622}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+.mono{font-family:"DejaVu Sans Mono",ui-monospace,monospace}
+a{color:inherit;text-decoration:none}
+header{display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid var(--line)}
+.logo{font-weight:700;font-size:15px;letter-spacing:.01em}
+nav{display:flex;gap:4px}
+nav a{padding:8px 12px;border-radius:6px;color:var(--mute);display:flex;gap:8px;align-items:center}
+nav a.on{color:var(--ink);background:var(--chip)}
+.count{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--chip);color:var(--mute)}
+nav a.on .count{background:#33332e}
+.user{margin-left:auto;color:var(--mute);font-size:13px}
+.crumb{padding:22px 32px 0;color:var(--mute);font-size:13px}
+.title{padding:6px 32px 22px;display:flex;align-items:flex-end;gap:16px}
+.title h1{margin:0;font-size:28px;font-weight:600;letter-spacing:-.01em}
+.title .meta{color:var(--mute);font-size:13px;padding-bottom:5px}
+.title .actions{margin-left:auto;display:flex;gap:10px}
+.btn{height:38px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accentInk);border-color:var(--accent);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.stat{padding:22px 32px 24px;border-right:1px solid var(--line)}
+.stat:last-child{border-right:0}
+.stat .k{font-size:11.5px;letter-spacing:.08em;color:var(--mute);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.stat .v{font-size:40px;font-weight:500;letter-spacing:-.02em;margin:12px 0 6px}
+.stat .v small{font-size:16px;color:var(--mute);margin-left:6px;font-weight:400}
+.stat .v.word{font-size:30px;margin:18px 0 10px}
+.stat .s{color:var(--mute);font-size:13px}
+.filters{display:flex;gap:16px;align-items:flex-end;padding:22px 32px}
+.f label{display:block;font-size:11.5px;letter-spacing:.08em;color:var(--mute);margin-bottom:8px;text-transform:uppercase}
+.input{height:44px;border:1px solid var(--line);background:var(--panel);border-radius:6px;display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--mute);font-size:14px}
+.input.sel{color:var(--ink);justify-content:space-between}
+.chev{color:var(--mute)}
+.show{display:flex;gap:18px;align-items:center;height:44px;color:var(--ink)}
+.cb{width:16px;height:16px;border:1px solid #4A4A44;border-radius:3px;display:inline-block;vertical-align:-3px;margin-right:8px}
+.cb.on{background:var(--accent);border-color:var(--accent)}
+.right{margin-left:auto;color:var(--mute);font-size:13px;height:44px;display:flex;align-items:center}
+.card{margin:0 32px 40px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tabs{display:flex;gap:6px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.tab{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:6px;color:var(--mute)}
+.tab .count{background:var(--chip)}
+.tab.on{background:var(--accent);color:var(--accentInk);font-weight:600}
+.tab.on .count{background:transparent;color:var(--accentInk);font-weight:600}
+table{width:100%;border-collapse:collapse}
+th{font-weight:500;color:var(--mute);text-align:left;font-size:13px;padding:14px 16px;background:var(--panel2);border-bottom:1px solid var(--line)}
+th.r,td.r{text-align:right}
+th .sort{color:var(--dim);margin-left:4px}
+th.on{color:var(--ink)}
+td{padding:16px;border-bottom:1px solid var(--line2);vertical-align:middle;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+.inv{display:flex;gap:14px;align-items:center}
+.badge{width:36px;height:36px;border-radius:8px;background:#22324F;color:#B9CCF4;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+.inv .n{font-weight:500;display:flex;gap:10px;align-items:center}
+.inv .sub{color:var(--mute);font-size:13px;margin-top:3px}
+.tag{font-size:11.5px;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--mute);font-weight:500}
+.strike{color:var(--dim);text-decoration:line-through;font-size:13px}
+.amt{font-size:14.5px;margin-top:2px}
+.pill{display:inline-block;padding:6px 10px;border-radius:5px;font-size:13px;font-weight:500;background:var(--good);color:var(--goodInk);white-space:nowrap}
+.pill.warn{background:var(--warn);color:var(--warnInk)}
+.none{color:var(--dim)}
+.check{font-size:13px}
+.check .why{color:var(--mute);font-size:12.5px;margin-top:3px}
+.icons{color:var(--mute);letter-spacing:6px;font-size:13px}
+.foot{padding:14px 16px;color:var(--mute);font-size:13px;border-top:1px solid var(--line);background:var(--panel)}
+
+.page{padding:0 32px 40px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;padding:0 32px 120px}
+.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.ph{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.ph h2{margin:0;font-size:14px;font-weight:600}
+.ph .side{margin-left:auto;color:var(--mute);font-size:12.5px}
+.row{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line2)}
+.row:last-child{border-bottom:0}
+.row .l{flex:1;min-width:0}
+.row .l .s{color:var(--mute);font-size:12.5px;margin-top:2px}
+.row.sel{background:#22221E;box-shadow:inset 3px 0 0 var(--accent)}
+.st{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--mute);white-space:nowrap}
+.st.warn{background:var(--warn);color:var(--warnInk)}
+.st.good{background:var(--good);color:var(--goodInk)}
+.st.blue{background:#1E2B45;color:#B9CCF4}
+.st.out{background:transparent;border:1px solid var(--line);color:var(--dim)}
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;color:var(--mute);font-size:13px}
+.paper{background:#F4F3EE;border-radius:6px;padding:0;overflow:hidden;position:relative}
+.paper img{width:100%;display:block}
+.cap{color:var(--mute);font-size:12.5px;margin-top:10px}
+.bar{position:fixed;left:0;right:0;bottom:0;border-top:1px solid var(--line);background:#141412;padding:14px 32px;display:flex;align-items:center;gap:12px}
+.sel2{height:38px;border:1px solid var(--line);background:var(--panel);border-radius:8px;display:inline-flex;align-items:center;gap:10px;padding:0 12px;font-size:13px}
+.saved{color:var(--goodInk);font-size:12.5px}
+.btn.ghost{background:transparent}
+.btn.dis{opacity:.45}
+.kv{display:grid;grid-template-columns:170px 1fr;gap:10px 16px;padding:16px;font-size:13.5px}
+.kv .k{color:var(--mute)}
+.mono2{font-family:"DejaVu Sans Mono",monospace;font-size:13px}
+.code{font-family:"DejaVu Sans Mono",monospace;font-size:12.5px;background:#0D0D0C;border:1px solid var(--line);border-radius:6px;padding:14px;line-height:1.65;color:#CFCFC7;white-space:pre}
+.steps{list-style:none;margin:0;padding:8px 16px 14px}
+.steps li{display:flex;gap:12px;padding:9px 0;font-size:13.5px;align-items:flex-start}
+.dot{width:20px;height:20px;border-radius:50%;border:1px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--mute);margin-top:1px}
+.dot.done{background:var(--good);border-color:var(--good);color:var(--goodInk)}
+.dot.now{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}
+.steps li.later{color:var(--dim)}
+.gate{padding:4px 16px 16px;font-size:13px}
+.gate div{padding:5px 0}
+.ok{color:var(--goodInk)}
+.wait{color:var(--warnInk)}
+.banner{margin:0 32px 18px;border:1px solid #4A3A1F;background:#211A10;color:var(--warnInk);border-radius:8px;padding:12px 16px;font-size:13px}
+.calc{width:auto}
+.calc td{padding:5px 24px 5px 0;border:0}
+.calc tr.r td{border-top:1px solid var(--line);padding-top:9px;font-weight:600}
+.field{margin-bottom:14px}
+.field label{display:block;color:var(--mute);font-size:12px;margin-bottom:6px}
+.field .input{height:38px;font-size:13.5px;color:var(--ink)}
+.field .input.empty{color:var(--dim)}
+.signin{min-height:900px;display:flex;align-items:center;justify-content:center}
+.sbox{width:400px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:32px}
+.sbox h1{margin:0 0 6px;font-size:22px;font-weight:600}
+.otp{display:flex;gap:8px}
+.otp span{width:48px;height:52px;border:1px solid var(--line);border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:"DejaVu Sans Mono",monospace;font-size:20px}
+.otp span.on{border-color:var(--accent)}
+</style><style>
+:root{--bg:#F7F6F2;--panel:#FFFFFF;--panel2:#F2F1EC;--line:#E1DFD7;--line2:#ECEAE4;--ink:#1A1A17;--mute:#66655E;--dim:#A09F97;--accent:#E8A87C;--accentInk:#2A170A;--good:#E1F1E8;--goodInk:#1D5A3E;--warn:#FBEBD3;--warnInk:#8A4B00;--chip:#ECEBE5}
+nav a.on .count{background:#E0DED6}
+.badge{background:#DFE7F7 !important;color:#2A4C8E !important}
+.row.sel{background:#F5F1EA}
+.st.blue{background:#E0E8F8;color:#2A4C8E}
+.code{background:#F7F6F2;color:#3A3A35}
+.paper{border:1px solid var(--line)}
+.bar{background:#FFFFFF}
+.cb{border-color:#B9B7AE}
+.banner{background:#FFF7EA;border-color:#F0D6AA}
+.otp span{background:#fff}
+</style></head><body><header><div class="logo">D&amp;D Recovery</div><nav><a class="on">Customers </a><a class="">Review queue <span class="count">1</span></a><a class="">Cases <span class="count">2</span></a><a class="">Money </a></nav><div class="user">Ibrahim · MFA on · Sign out</div></header>
+
+<div class="crumb">Customers / Harbor Home Goods</div>
+<div class="title">
+  <h1>Harbor Home Goods</h1>
+  <div class="meta">Fee 25% · authorization valid to 2028-01-10 · settings v1 · checks ran 2 min ago</div>
+  <div class="actions"><span class="btn">Settings</span><span class="btn">Upload invoices</span><span class="btn primary">Export report</span></div>
+</div>
+
+<section class="stats">
+  <div class="stat"><div class="k mono">% Disputable</div><div class="v">3,000.00<small>USD</small></div><div class="s">Day 1 count · day 0 gives 3,250.00</div></div>
+  <div class="stat"><div class="k mono">▦ Invoices</div><div class="v">8</div><div class="s">8 approved · 0 waiting for review</div></div>
+  <div class="stat"><div class="k mono">↗ Largest finding</div><div class="v word mono">SYN-1003</div><div class="s">Late invoice · 1,100.00</div></div>
+  <div class="stat"><div class="k mono">$ Recovered</div><div class="v">0.00<small>USD</small></div><div class="s">No disputes sent yet</div></div>
+</section>
+
+<div class="filters">
+  <div class="f" style="width:340px"><label class="mono">Search</label><div class="input">⌕&nbsp; Invoice, container or B/L</div></div>
+  <div class="f" style="width:220px"><label class="mono">Carrier</label><div class="input sel">All carriers <span class="chev">⌄</span></div></div>
+  <div class="f" style="width:200px"><label class="mono">Check</label><div class="input sel">Any <span class="chev">⌄</span></div></div>
+  <div class="f" style="width:240px"><label class="mono">Sort by</label><div class="input sel">Largest dispute <span class="chev">⌄</span></div></div>
+  <div class="f"><label class="mono">Show</label><div class="show"><span><span class="cb"></span>Findings only</span><span><span class="cb"></span>Day 0 count</span></div></div>
+  <div class="right">8 invoices</div>
+</div>
+
+<div class="card">
+  <div class="tabs">
+    <span class="tab on">All <span class="count">8</span></span>
+    <span class="tab">Findings <span class="count">5</span></span>
+    <span class="tab">No findings <span class="count">3</span></span>
+    <span class="tab">Needs review <span class="count">0</span></span>
+    <span class="tab">Manual entry <span class="count">0</span></span>
+    <span class="tab">Do not pursue <span class="count">0</span></span>
+  </div>
+  <table>
+    <tr><th>Invoice</th><th>Check</th><th class="r">Billed</th><th class="r on">In dispute <span class="sort">↓</span></th><th class="r">Invoice date</th><th class="r">Days to invoice</th><th>Status</th></tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1003 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000032</div></div></div></td>
+      <td class="check">Late invoice<div class="why">Issued 37 days after charges ended</div></td>
+      <td class="r"><div class="strike">1,100.00</div><div class="amt">0.00</div></td>
+      <td class="r"><span class="pill">1,100.00</span></td>
+      <td class="r">2026-04-08</td><td class="r" style="color:var(--warnInk)">37</td><td>Ready for a case</td>
+    </tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1007 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000069</div></div></div></td>
+      <td class="check">Duplicate<div class="why">Mar 8–10 already on SYN-1006</div></td>
+      <td class="r"><div class="strike">1,000.00</div><div class="amt">400.00</div></td>
+      <td class="r"><span class="pill">600.00</span></td>
+      <td class="r">2026-03-20</td><td class="r">8</td><td>Ready for a case</td>
+    </tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1004 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000048</div></div></div></td>
+      <td class="check">Free time<div class="why">Charged from Feb 13; free time ends Feb 14</div></td>
+      <td class="r"><div class="strike">1,600.00</div><div class="amt">1,100.00</div></td>
+      <td class="r"><span class="pill warn">500.00</span></td>
+      <td class="r">2026-02-25</td><td class="r">5</td><td>Changes with day count</td>
+    </tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1005 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000053</div></div></div></td>
+      <td class="check">Arithmetic · 2<div class="why">Line and total don't add up</div></td>
+      <td class="r"><div class="strike">3,450.00</div><div class="amt">2,950.00</div></td>
+      <td class="r"><span class="pill">500.00</span></td>
+      <td class="r">2026-04-25</td><td class="r">5</td><td>Ready for a case</td>
+    </tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1002 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000027</div></div></div></td>
+      <td class="check">Missing info · 4<div class="why">No free-time dates, no certifications</div></td>
+      <td class="r"><div class="strike">300.00</div><div class="amt">0.00</div></td>
+      <td class="r"><span class="pill">300.00</span></td>
+      <td class="r">2026-06-20</td><td class="r">5</td><td>Ready for a case</td>
+    </tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1006 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000069</div></div></div></td>
+      <td class="check none">No findings</td>
+      <td class="r"><div class="amt">2,000.00</div></td>
+      <td class="r none">—</td>
+      <td class="r">2026-03-15</td><td class="r">5</td><td class="none">Passed every check</td>
+    </tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1008 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000074 · 3 pages</div></div></div></td>
+      <td class="check none">No findings</td>
+      <td class="r"><div class="amt">900.00</div></td>
+      <td class="r none">—</td>
+      <td class="r">2026-05-22</td><td class="r">5</td><td class="none">Passed every check</td>
+    </tr>
+    <tr>
+      <td><div class="inv"><div class="badge">SL</div><div><div class="n">SYN-1001 <span class="tag">Approved</span></div><div class="sub">Sample Line Logistics · SLLU0000011</div></div></div></td>
+      <td class="check none">No findings</td>
+      <td class="r"><div class="amt">450.00</div></td>
+      <td class="r none">—</td>
+      <td class="r">2026-01-20</td><td class="r">8</td><td class="none">Passed every check</td>
+    </tr>
+  </table>
+  <div class="foot">Each dollar counted once · amounts in USD · ⓘ</div>
+</div>
+</body></html>
