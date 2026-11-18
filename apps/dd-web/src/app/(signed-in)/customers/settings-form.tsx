@@ -15,7 +15,7 @@ export function SettingsForm({ customerId }: { customerId: string }) {
         YAML
         <textarea name="yaml" rows={16} spellCheck={false} autoComplete="off" />
       </label>
-      <button type="submit" disabled={pending}>
+      <button type="submit" className="btn primary" disabled={pending}>
         Save settings
       </button>
       {state.message === "" ? null : <p role="status">{state.message}</p>}

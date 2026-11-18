@@ -26,7 +26,7 @@ export function AddCustomerForm() {
           spellCheck={false}
         />
       </label>
-      <button type="submit" disabled={pending}>
+      <button type="submit" className="btn primary" disabled={pending}>
         Add customer
       </button>
       <p role="status">{state.message}</p>

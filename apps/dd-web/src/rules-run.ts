@@ -27,8 +27,15 @@ export type RulesFailure = {
 };
 
 export type LatestChecks =
-  | { status: "failed" }
-  | { status: "ok"; ranAt: string; findings: number; day0: string; day1: string };
+  | { status: "failed"; message: string }
+  | {
+      status: "ok";
+      ranAt: string;
+      day0Findings: number;
+      day1Findings: number;
+      day0: string;
+      day1: string;
+    };
 
 type Prepared = {
   summary: RulesSummary;
@@ -68,16 +75,25 @@ export async function readLatestChecks(): Promise<Map<string, LatestChecks>> {
       customer_id: string;
       finished_at: Date;
       page_records: unknown;
-      findings: number;
+      day0_findings: number;
+      day1_findings: number;
     }>(
       `SELECT DISTINCT ON (r.customer_id)
               r.customer_id, r.finished_at, r.page_records,
-              (SELECT count(*)::int FROM "Finding" f WHERE f.processing_run_id = r.id) AS findings
+              (SELECT count(*)::int FROM "Finding" f
+                WHERE f.processing_run_id = r.id AND f.convention = 'day0') AS day0_findings,
+              (SELECT count(*)::int FROM "Finding" f
+                WHERE f.processing_run_id = r.id AND f.convention = 'day1') AS day1_findings
        FROM "ProcessingRun" r
        WHERE r.kind = 'rules' AND r.finished_at IS NOT NULL
        ORDER BY r.customer_id, r.finished_at DESC, r.id DESC`,
     );
-    for (const row of result.rows) checks.set(row.customer_id, presentChecks(row.page_records, row.finished_at, row.findings));
+    for (const row of result.rows) {
+      checks.set(
+        row.customer_id,
+        presentChecks(row.page_records, row.finished_at, countOf(row.day0_findings), countOf(row.day1_findings)),
+      );
+    }
     return checks;
   } finally {
     await client.end();
@@ -367,17 +383,43 @@ async function currentSettings(
   return { version, config: parsed.data };
 }
 
-function presentChecks(payload: unknown, finishedAt: Date, findings: number): LatestChecks {
-  if (!isRecord(payload) || payload.failed === true) return { status: "failed" };
+function presentChecks(payload: unknown, finishedAt: Date, day0Findings: number, day1Findings: number): LatestChecks {
+  if (!isRecord(payload) || payload.failed === true) return { status: "failed", message: savedReason(payload) };
   const totals = payload.total_disputable;
-  if (!isRecord(totals) || !Array.isArray(totals.day0) || !Array.isArray(totals.day1)) return { status: "failed" };
+  if (!isRecord(totals) || !Array.isArray(totals.day0) || !Array.isArray(totals.day1)) {
+    return { status: "failed", message: savedReason(payload) };
+  }
   return {
     status: "ok",
     ranAt: finishedAt.toISOString(),
-    findings,
+    day0Findings,
+    day1Findings,
     day0: formatDisputable(moneyList(totals.day0)),
     day1: formatDisputable(moneyList(totals.day1)),
   };
+}
+
+function savedReason(payload: unknown): string {
+  if (isRecord(payload) && typeof payload.message === "string" && payload.message.trim() !== "") return payload.message;
+  return "Checks failed.";
+}
+
+function countOf(value: number | string): number {
+  const count = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(count) && count >= 0 ? count : 0;
+}
+
+/** Day 1 is the count on the line. Day 0 is added only when its count or total differs. */
+export function formatChecksLine(checks: Extract<LatestChecks, { status: "ok" }>): string {
+  const day1 = findingWord(checks.day1Findings);
+  if (checks.day1Findings === checks.day0Findings && checks.day1 === checks.day0) {
+    return `${day1} · day 1 ${checks.day1}`;
+  }
+  return `day 1 ${day1} · ${checks.day1} · day 0 ${findingWord(checks.day0Findings)} · ${checks.day0}`;
+}
+
+function findingWord(count: number): string {
+  return count === 1 ? "1 finding" : `${count} findings`;
 }
 
 function moneyList(value: readonly unknown[]): { currency: string; amount: string }[] {

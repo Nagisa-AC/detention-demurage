@@ -49,16 +49,15 @@ export function DecisionBar({
           "Select an element."
         ) : (
           <>
-            Selected: <strong>{selected.label}</strong> — {selected.pill}
+            Selected: <strong>{selected.label}</strong> · {selected.pill}
           </>
         )}
       </span>
       {message === "" ? null : <span className="bar-message">{message}</span>}
-      <div className="bar-actions">
-        {showDecision && selected !== null ? (
-          <DecisionForm key={selected.key} invoiceId={invoiceId} selected={selected} onMessage={onMessage} />
-        ) : null}
-        <div className="bar-approve">
+      {showDecision && selected !== null ? (
+        <DecisionForm key={selected.key} invoiceId={invoiceId} selected={selected} onMessage={onMessage} />
+      ) : null}
+      <div className="bar-approve grow">
           <BillingParty
             invoiceId={invoiceId}
             printedName={printedName}
@@ -71,7 +70,7 @@ export function DecisionBar({
           {approved ? null : (
             <button
               type="button"
-              className="btn primary"
+              className={ready && !busy ? "btn primary" : "btn primary dis"}
               disabled={!ready || busy}
               onClick={() => {
                 if (!ready || busy) return;
@@ -82,7 +81,6 @@ export function DecisionBar({
               Approve invoice
             </button>
           )}
-        </div>
       </div>
     </div>
   );
@@ -114,7 +112,7 @@ function DecisionForm({
       {absent && !marking ? (
         <>
           <button type="button" className="btn" onClick={() => setMarking(true)}>
-            It&apos;s on the page — mark present
+            It&apos;s on the page
           </button>
           <Submit name="command" value="confirm_missing" className="btn primary">
             Confirm missing
@@ -204,7 +202,7 @@ function BillingParty({
   if (approved && !canBackfill) {
     return (
       <div className="billing-party">
-        <span>Billing party: {known?.label ?? chosenPartyId ?? "not set"}</span>
+        <span>Carrier: {known?.label ?? chosenPartyId ?? "not set"}</span>
         {printed}
       </div>
     );
@@ -212,7 +210,7 @@ function BillingParty({
   if (approved && canBackfill) {
     return (
       <div className="billing-party">
-        <span>Billing party: not set</span>
+        <span>Carrier: not set</span>
         {printed}
         {partyOptions.length === 0 ? (
           <span>No settings yet.</span>
@@ -225,7 +223,7 @@ function BillingParty({
   return (
     <div className="billing-party">
       <label>
-        Billing party
+        Carrier
         {partyOptions.length === 0 ? (
           <span>No settings yet.</span>
         ) : (
@@ -260,7 +258,7 @@ function PartySelect({
   return (
     <>
       <select
-        aria-label="Billing party"
+        aria-label="Carrier"
         value={value}
         disabled={busy}
         onChange={(event) => {
@@ -272,7 +270,7 @@ function PartySelect({
           setBillingParty(invoiceId, next, false)
             .then((result) => {
               const saved = result.message === "";
-              setStatus(saved ? "Saved" : result.message);
+              setStatus(saved ? "✓ Saved" : result.message);
               onMessage(saved ? "" : result.message);
             })
             .finally(() => {
@@ -308,7 +306,7 @@ function Backfill({
   return (
     <>
       <select
-        aria-label="Billing party"
+        aria-label="Carrier"
         value={partyId}
         disabled={busy}
         onChange={(event) => {
@@ -333,7 +331,7 @@ function Backfill({
           setBillingParty(invoiceId, partyId, true)
             .then((result) => {
               const saved = result.message === "";
-              setStatus(saved ? "Saved" : result.message);
+              setStatus(saved ? "✓ Saved" : result.message);
               onMessage(saved ? "" : result.message);
             })
             .finally(() => setBusy(false));

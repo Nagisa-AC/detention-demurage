@@ -1,4 +1,4 @@
-import { signIn } from "./actions";
+import { SignInForm } from "./form";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,26 +16,5 @@ export default async function SignInPage({
 }) {
   const params = await searchParams;
   const raw = Array.isArray(params.error) ? params.error[0] : params.error;
-  const message = signInMessage(raw);
-  return (
-    <main className="signin">
-      <div className="signin-mark">D&D Recovery</div>
-      <form action={signIn}>
-        <label>
-          Email
-          <input name="email" type="email" autoComplete="username" required />
-        </label>
-        <label>
-          Password
-          <input name="password" type="password" autoComplete="current-password" required />
-        </label>
-        <label>
-          Authenticator code
-          <input name="code" inputMode="numeric" autoComplete="one-time-code" required />
-        </label>
-        {message === null ? null : <p className="signin-error">{message}</p>}
-        <button type="submit">Sign in</button>
-      </form>
-    </main>
-  );
+  return <SignInForm message={signInMessage(raw)} />;
 }

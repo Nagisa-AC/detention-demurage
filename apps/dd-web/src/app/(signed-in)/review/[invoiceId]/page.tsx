@@ -4,6 +4,7 @@ import { readBillingChoice, readInvoice, readQueue, withReviewDb } from "../../.
 import { formatAmount, sumAmounts } from "../../../../review-format";
 import { presentReview } from "../../../../review-view";
 import { requireSession } from "../../../../session";
+import { shellFrame } from "../../../../shell-frame";
 import { Shell } from "../../../../shell";
 import { ReviewScreen } from "../review-screen";
 
@@ -12,6 +13,7 @@ export const runtime = "nodejs";
 
 export default async function InvoiceReviewPage({ params }: { params: Promise<{ invoiceId: string }> }) {
   const session = await requireSession({ path: "/review/invoice" });
+  const frame = await shellFrame();
   const { invoiceId } = await params;
   const loaded = await withReviewDb(async (sql) => {
     const invoice = await readInvoice(sql, invoiceId);
@@ -39,8 +41,8 @@ export default async function InvoiceReviewPage({ params }: { params: Promise<{ 
   } catch (error) {
     if (error instanceof ReviewError) {
       return (
-        <Shell session={session} active="review">
-          <p>This invoice cannot be reviewed.</p>
+        <Shell session={session} active="review" theme={frame.theme} waiting={frame.waiting}>
+          <p className="empty">This invoice cannot be reviewed.</p>
         </Shell>
       );
     }
@@ -58,7 +60,7 @@ export default async function InvoiceReviewPage({ params }: { params: Promise<{ 
       ? formatAmount(totalDue.value)
       : sumAmounts(invoice.lines.map((line) => line.amount));
   return (
-    <Shell session={session} active="review">
+    <Shell session={session} active="review" theme={frame.theme} waiting={frame.waiting}>
       <ReviewScreen
         invoiceId={invoice.id}
         customerId={invoice.customerId}

@@ -65,28 +65,28 @@ export function PdfPane({
   }, [url, page, query, width]);
 
   return (
-    <section aria-label="Invoice page" className="pdf-pane">
-      <div className="pdf-tools">
-        <button type="button" className="btn" onClick={() => onPage(page - 1)} disabled={page <= 1}>
-          ‹ Prev page
+    <div>
+      <div className="toolbar">
+        <button type="button" className="btn ghost" onClick={() => onPage(page - 1)} disabled={page <= 1}>
+          ‹ Prev
         </button>
         <span>
           Page {page} of {pageCount} · {every ? "every page viewed" : `${viewedCount} of ${pageCount} viewed`}
         </span>
-        <button type="button" className="btn" onClick={() => onPage(page + 1)} disabled={page >= pageCount}>
-          Next page ›
+        <button type="button" className="btn ghost" onClick={() => onPage(page + 1)} disabled={page >= pageCount}>
+          Next ›
         </button>
-        <span className="zoom">{zoom === null ? "Zoom" : `Zoom ${zoom}%`}</span>
+        <span style={{ marginLeft: "auto" }}>{zoom === null ? "Zoom" : `Zoom ${zoom}%`}</span>
       </div>
-      <div className="pdf-frame" ref={frameRef}>
+      <div className="paper" ref={frameRef} aria-label="Invoice page">
         {failed ? <p className="pdf-error">The page could not be loaded.</p> : null}
         <div className="pdf-stage">
           <canvas ref={canvasRef} />
           <div ref={layerRef} className="textLayer" />
         </div>
       </div>
-      <p className="pdf-note">Blue outline: where the selected element was read. Page image from the uploaded PDF.</p>
-    </section>
+      <p className="cap">A blue outline marks where the selected value was read.</p>
+    </div>
   );
 }
 

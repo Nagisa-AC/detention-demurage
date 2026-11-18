@@ -102,13 +102,23 @@ describe("shell", () => {
     expect(logs).toContain("path layout session yes");
   });
 
-  it("uses the reference colors and self-hosts Inter", () => {
+  it("uses the v2 theme tokens and self-hosts Inter and IBM Plex Mono", () => {
     const css = fs.readFileSync(path.join(appDir, "app/globals.css"), "utf8");
-    for (const token of ["#F4F5F7", "#14181F", "#1F4FB8", "#163A8A", "#C9CED8", "#2A303B", "14px 32px", "24px 32px"]) {
-      expect(css).toContain(token);
-    }
+    expect(css).toContain("--bg: #F7F6F2");
+    expect(css).toContain("--panel: #FFFFFF");
+    expect(css).toContain("--ink: #1A1A17");
+    expect(css).toContain("--accent: #E8A87C");
+    expect(css).toContain("--accentInk: #2A170A");
+    expect(css).toContain("--bg: #111110");
+    expect(css).toContain("--panel: #171715");
+    expect(css).toContain("--ink: #ECECE6");
+    expect(css).toContain("--accentInk: #1A120C");
+    expect(css).toContain('html[data-theme="light"]');
+    expect(css).toContain('html[data-theme="dark"]');
     const layout = fs.readFileSync(path.join(appDir, "app/layout.tsx"), "utf8");
     expect(layout).toContain('next/font/google');
+    expect(layout).toContain("IBM_Plex_Mono");
+    expect(layout).toContain("data-theme={theme}");
     expect(layout).toContain('"400"');
     expect(layout).toContain('"700"');
     expect(layout).not.toContain("fonts.googleapis.com");
