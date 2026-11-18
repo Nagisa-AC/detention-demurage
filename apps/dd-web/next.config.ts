@@ -9,12 +9,13 @@ const nextConfig: NextConfig = {
       ".js": [".ts", ".tsx", ".js", ".jsx"],
     },
   },
-  serverExternalPackages: ["pdfjs-dist"],
+  serverExternalPackages: ["pdfjs-dist", "@react-pdf/renderer", "pdf-lib"],
   outputFileTracingIncludes: {
     "/api/pdf-worker": [
       "./node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
       "../../node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
     ],
+    "/customers/**": ["./fonts/**/*"],
   },
   poweredByHeader: false,
 };

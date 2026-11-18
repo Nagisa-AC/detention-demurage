@@ -21,8 +21,8 @@ import { insertSettingsVersion, type SettingsSql } from "../settings";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const documentHash = createHash("sha256").update("synthetic-db-fixture").digest("hex");
-const appendOnly = ["Submission", "LedgerEntry", "AuditEvent", "CustomerConfigVersion"] as const;
-const laterTables = ["Case", "CaseLine", "Submission", "LedgerEntry", "FeeInvoice"] as const;
+const appendOnly = ["Submission", "LedgerEntry", "AuditEvent", "CustomerConfigVersion", "FirmProfileVersion", "ReportExport"] as const;
+const laterTables = ["Case", "CaseLine", "Submission", "LedgerEntry", "FeeInvoice", "ReportExport"] as const;
 const customerTables = [
   "AuditEvent",
   "Case",
@@ -37,6 +37,7 @@ const customerTables = [
   "Invoice",
   "LedgerEntry",
   "ProcessingRun",
+  "ReportExport",
   "Submission",
 ] as const;
 
@@ -90,9 +91,9 @@ describe("database", () => {
 
   beforeEach(async () => {
     await owner.query(`TRUNCATE TABLE
-      "Finding", "ProcessingRun", "ChargeLine", "ElementValue", "Invoice", "Document",
+      "ReportExport", "Finding", "ProcessingRun", "ChargeLine", "ElementValue", "Invoice", "Document",
       "CaseLine", "Case", "Submission", "LedgerEntry", "FeeInvoice", "AuditEvent",
-      "CustomerConfigVersion", "Customer"`);
+      "CustomerConfigVersion", "FirmProfileVersion", "Customer"`);
   });
 
   it("gives dd_app no update, delete, or truncate on the append-only tables", async () => {
@@ -138,7 +139,8 @@ describe("database", () => {
     expect(kept.rows[0]?.actor).toBe("Reviewer");
 
     for (const table of appendOnly) {
-      await expectSqlState(app.query(`UPDATE ${quoteTable(table)} SET customer_id = customer_id`), "42501");
+      const column = table === "FirmProfileVersion" ? "version" : "customer_id";
+      await expectSqlState(app.query(`UPDATE ${quoteTable(table)} SET ${column} = ${column}`), "42501");
       await expectSqlState(app.query(`DELETE FROM ${quoteTable(table)}`), "42501");
       await expectSqlState(app.query(`TRUNCATE ${quoteTable(table)}`), "42501");
     }
@@ -191,8 +193,9 @@ describe("database", () => {
          AND (tc.table_name = ANY ($1::text[]) OR ccu.table_name = ANY ($1::text[]))`,
       [appendOnly],
     );
-    expect(rules.rows.length).toBeGreaterThanOrEqual(appendOnly.length);
+    expect(rules.rows.length).toBeGreaterThanOrEqual(appendOnly.length - 1);
     for (const table of appendOnly) {
+      if (table === "FirmProfileVersion") continue;
       expect(rules.rows.some((row) => row.from_table === table)).toBe(true);
     }
     for (const row of rules.rows) {

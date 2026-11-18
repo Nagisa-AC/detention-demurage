@@ -32,6 +32,15 @@ data "aws_iam_policy_document" "web" {
     actions   = ["s3:GetObject"]
     resources = ["${local.bucket_arn}/documents/*"]
   }
+
+  # Stored client reports only. No DeleteObject, and no other prefix.
+  statement {
+    sid     = "ReadAndWriteReports"
+    effect  = "Allow"
+    actions = ["s3:GetObject", "s3:PutObject"]
+
+    resources = ["${local.bucket_arn}/reports/*"]
+  }
 }
 
 # No login profile, so this user cannot open the console.

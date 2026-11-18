@@ -146,6 +146,10 @@ nav a[aria-current="page"] .count { background: var(--countOn); }
 
 .user form { margin: 0; }
 
+.user a { color: inherit; text-decoration: none; }
+
+.user a:hover { color: var(--ink); }
+
 .user button {
   background: transparent;
   border: 0;
@@ -674,6 +678,30 @@ html[data-theme="dark"] .paper { border-color: transparent; }
 .history { margin: 0; padding: 8px 16px 14px; }
 
 .history li { padding: 6px 0; color: var(--ink); font-size: 13.5px; }
+
+.settings-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--mute); }
+
+.settings-form input {
+  width: 100%;
+  max-width: 420px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.export { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+
+.export form { margin: 0; }
+
+.export-reason { margin: 0; max-width: 280px; text-align: right; color: var(--warnInk); font-size: 12.5px; }
+
+.export-links { margin: 0; display: flex; gap: 10px; align-items: center; font-size: 12.5px; }
+
+.export-links .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
 
 .settings-form, .upload {
   display: flex;

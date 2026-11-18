@@ -39,6 +39,7 @@ export function Shell({
           ))}
         </nav>
         <div className="user">
+          <a href="/firm">Firm</a>
           <ThemeToggle theme={theme} />
           <span>
             {session.name} · MFA on

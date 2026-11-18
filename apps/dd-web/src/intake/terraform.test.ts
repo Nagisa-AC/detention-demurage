@@ -131,14 +131,22 @@ describe("terraform plan", () => {
     expect(policyResource.user).toBe("dd-web");
     expect(policyResource.name).toBe("dd-web-documents");
     const web = statements(String(policyResource.policy));
-    expect(web.flatMap((statement) => statement.actions).sort()).toEqual(["s3:GetObject", "s3:GetObject", "s3:PutObject"]);
+    expect(web.flatMap((statement) => statement.actions).sort()).toEqual([
+      "s3:GetObject",
+      "s3:GetObject",
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:PutObject",
+    ]);
     expect(actions(web, "s3:GetObject").sort()).toEqual([
       "arn:aws:s3:::dd-recovery-plan-test/documents/*",
       "arn:aws:s3:::dd-recovery-plan-test/incoming/*",
+      "arn:aws:s3:::dd-recovery-plan-test/reports/*",
     ]);
     expect(actions(web, "s3:PutObject").sort()).toEqual([
       "arn:aws:s3:::dd-recovery-plan-test/documents/*",
       "arn:aws:s3:::dd-recovery-plan-test/incoming/*",
+      "arn:aws:s3:::dd-recovery-plan-test/reports/*",
     ]);
   });
 
