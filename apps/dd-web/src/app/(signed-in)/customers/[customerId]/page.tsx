@@ -42,7 +42,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
         <h1>{customer.displayName}</h1>
         <div className="meta">{meta.length === 0 ? customer.configId : meta.join(" · ")}</div>
         <div className="actions">
-          <ExportButton customerId={customer.id} reason={exported.reason} latest={exported.latest} />
+          <ExportButton customerId={customer.id} phase={exported.phase} reason={exported.reason} latest={exported.latest} />
           <a className="btn" href={`/customers/${customer.id}/settings`}>
             Settings
           </a>

@@ -1,37 +1,58 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useActionState } from "react";
 import { exportReport, type ExportFormState } from "./export-report";
 
-const initial: ExportFormState = { message: "", id: "", number: "" };
+type ExportPhase = "blocked" | "ready" | "generating" | "failed";
+
+const initial: ExportFormState = { message: "", queued: false };
 
 export function ExportButton({
   customerId,
+  phase,
   reason,
   latest,
 }: {
   customerId: string;
+  phase: ExportPhase;
   reason: string | null;
   latest: { id: string; number: string } | null;
 }) {
+  const router = useRouter();
   const [state, action, pending] = useActionState(exportReport, initial);
-  const blocked = reason !== null;
-  const exported = state.id === "" ? latest : { id: state.id, number: state.number };
+  const generating = phase === "generating" || pending;
+  useEffect(() => {
+    if (!state.queued) return;
+    router.refresh();
+  }, [state.queued, router]);
+  useEffect(() => {
+    if (phase !== "generating") return;
+    const timer = setInterval(() => router.refresh(), 3000);
+    return () => clearInterval(timer);
+  }, [phase, router]);
+  const note = state.message !== "" ? state.message : reason;
   return (
     <div className="export">
-      <form action={action}>
+      <form
+        action={async (formData) => {
+          await action(formData);
+          router.refresh();
+        }}
+      >
         <input type="hidden" name="customerId" value={customerId} />
-        <button type="submit" className="btn primary" disabled={blocked || pending}>
-          Export report
+        <button type="submit" className="btn primary" disabled={phase === "blocked" || generating}>
+          {generating ? "Generating…" : "Export report"}
         </button>
       </form>
-      {blocked ? <p className="export-reason" role="status">{reason}</p> : null}
-      {!blocked && state.message !== "" ? <p className="export-reason" role="status">{state.message}</p> : null}
-      {exported === null ? null : (
+      {generating ? <p className="export-status" role="status">Generating…</p> : null}
+      {!generating && note !== null && note !== "" ? <p className="export-reason" role="status">{note}</p> : null}
+      {latest === null ? null : (
         <p className="export-links">
-          <span className="mono">{exported.number}</span>
-          <a href={`/api/reports/${customerId}/${exported.id}?format=pdf`}>PDF</a>
-          <a href={`/api/reports/${customerId}/${exported.id}?format=csv`}>CSV</a>
+          <span className="mono">{latest.number}</span>
+          <a href={`/api/reports/${customerId}/${latest.id}?format=pdf`}>PDF</a>
+          <a href={`/api/reports/${customerId}/${latest.id}?format=csv`}>CSV</a>
         </p>
       )}
     </div>

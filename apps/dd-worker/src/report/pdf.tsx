@@ -1,6 +1,6 @@
 import { Document, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
-import { registerReportFonts } from "./fonts";
-import type { ReportBuild } from "./model";
+import { registerReportFonts } from "./fonts.js";
+import type { ReportBuild } from "./model.js";
 
 const ink = "#1A1A17";
 const mute = "#66655E";

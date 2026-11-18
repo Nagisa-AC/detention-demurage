@@ -1,31 +1,31 @@
-import { randomUUID } from "node:crypto";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { customerConfigSchema, type CustomerConfig } from "dd-core";
 import { readLatestFirm, type FirmProfile } from "../firm";
 import { uploadConfig, webS3 } from "../intake/aws";
 import { isUuid } from "../intake/limits";
 import { withReviewDb, type ReviewSql } from "../review-data";
 import { readDecisions } from "../review-view";
-import { feePercent } from "../settings";
-import { renderReport, sha256 } from "./assemble";
 import { exportRefusal, type ExportGate } from "./gate";
-import { buildReport, issuedYear, reportNumber, type ConventionSource, type ReportFindingSource, type SourceInvoice } from "./model";
-import { REPORT_SERIES, type RateBand } from "./wording";
 
 export type ReportStore = {
-  put(key: string, body: Uint8Array, contentType: string): Promise<void>;
   get(key: string): Promise<Uint8Array | null>;
 };
 
-export type ExportResult = { ok: true; id: string; number: string } | { ok: false; reason: string };
+export type EnqueueResult = { ok: true } | { ok: false; reason: string };
+
+export type ExportPhase = "blocked" | "ready" | "generating" | "failed";
 
 export type ExportView = {
+  phase: ExportPhase;
   reason: string | null;
   latest: { id: string; number: string } | null;
 };
 
-const MONEY = /^\d+\.\d{2}$/;
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const FAILURES = new Set([
+  "The report could not be built.",
+  "The report could not be stored.",
+  "This report is too large to build at once.",
+]);
 
 export function reportObjectKey(customerId: string, exportId: string, ext: "pdf" | "csv"): string {
   return `reports/${customerId}/${exportId}.${ext}`;
@@ -36,6 +36,10 @@ export function isReportObjectKey(customerId: string, key: string): boolean {
   return key.startsWith(prefix) && !key.includes("..") && key.length > prefix.length;
 }
 
+export function knownFailure(reason: unknown): string {
+  return typeof reason === "string" && FAILURES.has(reason) ? reason : "The report could not be built.";
+}
+
 export function s3ReportStore(): ReportStore | null {
   const config = uploadConfig();
   if (config === null) return null;
@@ -44,9 +48,6 @@ export function s3ReportStore(): ReportStore | null {
 
 export function objectStore(client: S3Client, bucket: string): ReportStore {
   return {
-    async put(key, body, contentType) {
-      await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
-    },
     async get(key) {
       try {
         const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -62,90 +63,69 @@ export function objectStore(client: S3Client, bucket: string): ReportStore {
 
 export async function exportStatus(customerId: string): Promise<ExportView> {
   const view = await withReviewDb((sql) => readExportView(sql, customerId));
-  return view ?? { reason: "The database is not configured.", latest: null };
+  return view ?? { phase: "blocked", reason: "The database is not configured.", latest: null };
 }
 
 export async function readExportView(sql: ReviewSql, customerId: string): Promise<ExportView> {
-  const loaded = await loadExport(sql, customerId, null);
+  const customer = await sql.query<{ display_name: string }>(`SELECT display_name FROM "Customer" WHERE id = $1::uuid`, [customerId]);
   const latest = await latestExport(sql, customerId);
-  if (loaded.kind !== "ready" && loaded.kind !== "blocked") return { reason: "This customer was not found.", latest };
-  return { reason: exportRefusal(loaded.gate), latest };
+  if (customer.rows[0] === undefined) return { phase: "blocked", reason: "This customer was not found.", latest };
+  const job = await latestReportJob(sql, customerId);
+  if (job !== null && job.finishedAt === null) return { phase: "generating", reason: null, latest };
+  const loaded = await loadGate(sql, customerId);
+  if (loaded.kind === "missing") return { phase: "blocked", reason: "This customer was not found.", latest };
+  const reason = exportRefusal(loaded.gate);
+  if (reason !== null) return { phase: "blocked", reason, latest };
+  if (job?.failed === true) return { phase: "failed", reason: job.reason, latest };
+  return { phase: "ready", reason: null, latest };
 }
 
-export async function createReportExport(sql: ReviewSql, store: ReportStore, input: { customerId: string; actor: string }): Promise<ExportResult> {
+export async function enqueueReport(sql: ReviewSql, input: { customerId: string; actor: string }): Promise<EnqueueResult> {
   if (!isUuid(input.customerId)) return { ok: false, reason: "This customer was not found." };
+  if (input.actor.trim() === "" || input.actor.length > 200) return { ok: false, reason: "The report could not be built." };
   await sql.query("BEGIN");
   try {
-    await sql.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`dd-report-${REPORT_SERIES}`]);
-    const loaded = await loadExport(sql, input.customerId, store);
+    const customer = await sql.query<{ display_name: string }>(
+      `SELECT display_name FROM "Customer" WHERE id = $1::uuid FOR UPDATE`,
+      [input.customerId],
+    );
+    if (customer.rows[0] === undefined) {
+      await sql.query("ROLLBACK");
+      return { ok: false, reason: "This customer was not found." };
+    }
+    const loaded = await loadGate(sql, input.customerId);
     if (loaded.kind === "missing") {
       await sql.query("ROLLBACK");
       return { ok: false, reason: "This customer was not found." };
     }
-    const reason = exportRefusal(loaded.gate);
-    if (reason !== null || loaded.kind !== "ready") {
+    if (loaded.kind === "blocked") {
       await sql.query("ROLLBACK");
-      return { ok: false, reason: reason ?? "The report could not be built." };
+      return { ok: false, reason: exportRefusal(loaded.gate) ?? "The report could not be built." };
     }
-    const year = issuedYear(loaded.finishedAt);
-    const sequence = await nextSequence(sql, year);
-    const number = reportNumber(year, sequence);
-    const model = buildReport({ ...loaded.build, reportNumber: number });
-    const pdf = await renderReport(model);
-    const csv = new TextEncoder().encode(model.csv);
-    const pdfSha = sha256(pdf);
-    const csvSha = sha256(csv);
-    const id = randomUUID();
-    const pdfKey = reportObjectKey(input.customerId, id, "pdf");
-    const csvKey = reportObjectKey(input.customerId, id, "csv");
-    await store.put(pdfKey, pdf, "application/pdf");
-    await store.put(csvKey, csv, "text/csv; charset=utf-8");
-    await sql.query(
-      `INSERT INTO "ReportExport" (
-         id, customer_id, processing_run_id, firm_profile_id, report_number, series, year, sequence,
-         settings_version, firm_version, convention, pdf_sha256, csv_sha256, pdf_key, csv_key, created_by
-       ) VALUES (
-         $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::int, $8::int,
-         $9::int, $10::int, $11, $12, $13, $14, $15, $16
-       )`,
-      [
-        id,
-        input.customerId,
-        loaded.runId,
-        loaded.firm.id,
-        number,
-        REPORT_SERIES,
-        year,
-        sequence,
-        loaded.settingsVersion,
-        loaded.firm.version,
-        model.convention,
-        pdfSha,
-        csvSha,
-        pdfKey,
-        csvKey,
-        input.actor,
-      ],
+    const open = await sql.query<{ id: string }>(
+      `SELECT id FROM "ProcessingRun"
+       WHERE customer_id = $1::uuid AND kind = 'report' AND finished_at IS NULL
+       LIMIT 1`,
+      [input.customerId],
     );
+    if (open.rows[0] !== undefined) {
+      await sql.query("COMMIT");
+      return { ok: true };
+    }
     await sql.query(
-      `INSERT INTO "AuditEvent" (customer_id, actor, action, payload)
-       VALUES ($1::uuid, $2, 'report_exported', $3::jsonb)`,
+      `INSERT INTO "ProcessingRun" (customer_id, kind, page_records)
+       VALUES ($1::uuid, 'report', $2::jsonb)`,
       [
         input.customerId,
-        input.actor,
         JSON.stringify({
-          run_id: loaded.runId,
-          settings_version: loaded.settingsVersion,
-          firm_profile_version: loaded.firm.version,
-          convention: model.convention,
-          pdf_sha256: pdfSha,
-          csv_sha256: csvSha,
-          report_number: number,
+          rules_run_id: loaded.runId,
+          firm_profile_version: loaded.firmVersion,
+          actor: input.actor,
         }),
       ],
     );
     await sql.query("COMMIT");
-    return { ok: true, id, number };
+    return { ok: true };
   } catch (error) {
     await sql.query("ROLLBACK");
     throw error;
@@ -175,17 +155,9 @@ export async function openReport(sql: ReviewSql, store: ReportStore, customerId:
 type Loaded =
   | { kind: "missing" }
   | { kind: "blocked"; gate: ExportGate }
-  | {
-      kind: "ready";
-      gate: ExportGate;
-      runId: string;
-      finishedAt: Date;
-      settingsVersion: number;
-      firm: FirmProfile;
-      build: Omit<Parameters<typeof buildReport>[0], "reportNumber">;
-    };
+  | { kind: "ready"; gate: ExportGate; runId: string; firmVersion: number };
 
-async function loadExport(sql: ReviewSql, customerId: string, store: ReportStore | null): Promise<Loaded> {
+async function loadGate(sql: ReviewSql, customerId: string): Promise<Loaded> {
   const customer = await sql.query<{ display_name: string }>(`SELECT display_name FROM "Customer" WHERE id = $1::uuid`, [customerId]);
   if (customer.rows[0] === undefined) return { kind: "missing" };
   const firm = await readLatestFirm(sql);
@@ -198,43 +170,14 @@ async function loadExport(sql: ReviewSql, customerId: string, store: ReportStore
   if (exportRefusal(gate) !== null || firm === null || settings === null || run === null || run.summary === null) {
     return { kind: "blocked", gate };
   }
-  const findings = await loadFindings(sql, run.id, invoices);
-  const withPdfs = store === null ? invoices : await attachPdfs(store, invoices);
-  const byId = new Map(withPdfs.map((invoice) => [invoice.id, invoice]));
-  const sources = run.summary.invoice_ids.flatMap((id) => {
-    const invoice = byId.get(id);
-    return invoice === undefined ? [] : [toSource(invoice)];
-  });
-  return {
-    kind: "ready",
-    gate,
-    runId: run.id,
-    finishedAt: run.finishedAt,
-    settingsVersion: settings.version,
-    firm,
-    build: {
-      firmName: firm.firmName,
-      cityState: firm.cityState,
-      replyTo: firm.replyTo,
-      signerName: firm.signerName,
-      signerTitle: firm.signerTitle,
-      customerName: customer.rows[0].display_name,
-      runId: run.id,
-      finishedAt: run.finishedAt.toISOString(),
-      feeLabel: feePercent(settings.config.fee_pct),
-      rates: ratesOf(settings.config),
-      day0: conventionOf(run.summary, "day0", findings, byId),
-      day1: conventionOf(run.summary, "day1", findings, byId),
-      invoices: sources,
-    },
-  };
+  return { kind: "ready", gate, runId: run.id, firmVersion: firm.version };
 }
 
 function gateOf(input: {
   firm: FirmProfile | null;
   settings: { version: number } | null;
   run: RulesRun | null;
-  invoices: readonly LoadedInvoice[];
+  invoices: readonly { id: string; approved: boolean }[];
   pending: number;
   approvedIds: readonly string[];
 }): ExportGate {
@@ -253,14 +196,6 @@ function gateOf(input: {
   };
 }
 
-async function nextSequence(sql: ReviewSql, year: number): Promise<number> {
-  const result = await sql.query<{ sequence: number }>(
-    `SELECT COALESCE(MAX(sequence), 0)::int AS sequence FROM "ReportExport" WHERE series = $1 AND year = $2::int`,
-    [REPORT_SERIES, year],
-  );
-  return (result.rows[0]?.sequence ?? 0) + 1;
-}
-
 async function latestExport(sql: ReviewSql, customerId: string): Promise<{ id: string; number: string } | null> {
   const result = await sql.query<{ id: string; report_number: string }>(
     `SELECT id, report_number FROM "ReportExport" WHERE customer_id = $1::uuid ORDER BY created_at DESC, sequence DESC LIMIT 1`,
@@ -269,6 +204,27 @@ async function latestExport(sql: ReviewSql, customerId: string): Promise<{ id: s
   const row = result.rows[0];
   if (row === undefined) return null;
   return { id: row.id, number: row.report_number };
+}
+
+type ReportJob = { finishedAt: Date | null; failed: boolean; reason: string };
+
+async function latestReportJob(sql: ReviewSql, customerId: string): Promise<ReportJob | null> {
+  const result = await sql.query<{ finished_at: Date | null; page_records: unknown }>(
+    `SELECT finished_at, page_records
+     FROM "ProcessingRun"
+     WHERE customer_id = $1::uuid AND kind = 'report'
+     ORDER BY started_at DESC, id DESC
+     LIMIT 1`,
+    [customerId],
+  );
+  const row = result.rows[0];
+  if (row === undefined) return null;
+  const failed = isRecord(row.page_records) && row.page_records.failed === true;
+  return {
+    finishedAt: row.finished_at,
+    failed,
+    reason: knownFailure(isRecord(row.page_records) ? row.page_records.reason : null),
+  };
 }
 
 type RulesRun = {
@@ -317,56 +273,13 @@ async function currentConfig(sql: ReviewSql, customerId: string): Promise<{ vers
   return { version: row.version, config: parsed.data };
 }
 
-type LoadedInvoice = {
-  id: string;
-  number: string;
-  carrier: string;
-  container: string;
-  billed: string;
-  currency: string;
-  invoiceDate: string | null;
-  partyId: string | null;
-  approved: boolean;
-  storageKey: string | null;
-  lines: SourceInvoice["lines"];
-  pdf: Uint8Array | null;
-};
-
-async function loadInvoices(sql: ReviewSql, customerId: string): Promise<LoadedInvoice[]> {
-  const headers = await sql.query<{
-    id: string;
-    invoice_number: string;
-    billing_party: string;
-    currency: string;
-    sha256: string;
-    invoice_date: string | null;
-    storage_key: string | null;
-  }>(
-    `SELECT i.id, i.invoice_number, i.billing_party, i.currency, d.sha256, i.invoice_date::text AS invoice_date, d.storage_key
+async function loadInvoices(sql: ReviewSql, customerId: string): Promise<{ id: string; approved: boolean }[]> {
+  const headers = await sql.query<{ id: string; sha256: string }>(
+    `SELECT i.id, d.sha256
      FROM "Invoice" i
      JOIN "Document" d ON d.id = i.document_id
      WHERE i.customer_id = $1::uuid
      ORDER BY i.invoice_number, i.id`,
-    [customerId],
-  );
-  const elements = await sql.query<{ invoice_id: string; element_key: string; text: string | null; value: string | null }>(
-    `SELECT invoice_id, element_key, text, value FROM "ElementValue" WHERE customer_id = $1::uuid`,
-    [customerId],
-  );
-  const lines = await sql.query<{
-    invoice_id: string;
-    line_id: string;
-    container: string;
-    charged_from: string;
-    charged_to: string;
-    days: number;
-    rate: string;
-    amount: string;
-  }>(
-    `SELECT invoice_id, line_id, container, charged_from::text AS charged_from, charged_to::text AS charged_to,
-            days, rate::text AS rate, amount::text AS amount
-     FROM "ChargeLine" WHERE customer_id = $1::uuid
-     ORDER BY invoice_id, line_id`,
     [customerId],
   );
   const events = await sql.query<{ payload: unknown }>(
@@ -374,79 +287,10 @@ async function loadInvoices(sql: ReviewSql, customerId: string): Promise<LoadedI
     [customerId],
   );
   const payloads = events.rows.map((event) => event.payload);
-  const elementsByInvoice = group(elements.rows, (row) => row.invoice_id);
-  const linesByInvoice = group(lines.rows, (row) => row.invoice_id);
-  return headers.rows.map((header) => {
-    const saved = readDecisions(payloads, header.sha256);
-    const approved = saved.some((decision) => decision.outcome === "approved");
-    let partyId: string | null = null;
-    for (const decision of saved) {
-      if (decision.outcome === "approved" && decision.party_id !== undefined) partyId = decision.party_id;
-    }
-    const stored = elementsByInvoice.get(header.id) ?? [];
-    const chargeLines = linesByInvoice.get(header.id) ?? [];
-    const container = chargeLines[0]?.container ?? textOf(stored, "container_number") ?? "";
-    return {
-      id: header.id,
-      number: header.invoice_number,
-      carrier: header.billing_party,
-      container,
-      billed: moneyOf(stored, "total_due") ?? "0.00",
-      currency: header.currency,
-      invoiceDate: isoOf(textOf(stored, "invoice_date")) ?? isoOf(header.invoice_date),
-      partyId,
-      approved,
-      storageKey: header.storage_key,
-      pdf: null,
-      lines: chargeLines.map((line) => ({
-        id: line.line_id,
-        container: line.container,
-        chargedFrom: line.charged_from.slice(0, 10),
-        chargedTo: line.charged_to.slice(0, 10),
-        days: line.days,
-        rate: twoDecimals(line.rate),
-        amount: twoDecimals(line.amount),
-      })),
-    };
-  });
-}
-
-async function loadFindings(sql: ReviewSql, runId: string, invoices: readonly LoadedInvoice[]): Promise<(ReportFindingSource & { convention: string | null })[]> {
-  const byId = new Map(invoices.map((invoice) => [invoice.id, invoice.number]));
-  const result = await sql.query<{
-    invoice_id: string;
-    rule: string;
-    citations: unknown;
-    line_ids: unknown;
-    expected: string;
-    actual: string;
-    amount: string;
-    explain: string;
-    convention: string | null;
-    evidence: unknown;
-  }>(
-    `SELECT invoice_id, rule, citations, line_ids, expected, actual, disputable_amount::text AS amount, explain, convention, evidence
-     FROM "Finding"
-     WHERE processing_run_id = $1::uuid
-     ORDER BY invoice_id, rule, id`,
-    [runId],
-  );
-  return result.rows.flatMap((row) => {
-    const invoiceNumber = byId.get(row.invoice_id);
-    if (invoiceNumber === undefined) return [];
-    return [{
-      invoiceNumber,
-      rule: row.rule,
-      citations: stringList(row.citations),
-      lineIds: stringList(row.line_ids),
-      expected: row.expected,
-      actual: row.actual,
-      amount: twoDecimals(row.amount),
-      explain: row.explain,
-      evidence: evidenceList(row.evidence),
-      convention: row.convention,
-    }];
-  });
+  return headers.rows.map((header) => ({
+    id: header.id,
+    approved: readDecisions(payloads, header.sha256).some((decision) => decision.outcome === "approved"),
+  }));
 }
 
 async function pendingDocuments(sql: ReviewSql, customerId: string): Promise<number> {
@@ -458,67 +302,6 @@ async function pendingDocuments(sql: ReviewSql, customerId: string): Promise<num
     [customerId],
   );
   return result.rows[0]?.n ?? 0;
-}
-
-async function attachPdfs(store: ReportStore, invoices: readonly LoadedInvoice[]): Promise<LoadedInvoice[]> {
-  const next: LoadedInvoice[] = [];
-  for (const invoice of invoices) {
-    if (invoice.storageKey === null || !invoice.storageKey.startsWith("documents/")) {
-      next.push(invoice);
-      continue;
-    }
-    const pdf = await store.get(invoice.storageKey);
-    next.push({ ...invoice, pdf });
-  }
-  return next;
-}
-
-function toSource(invoice: LoadedInvoice): SourceInvoice {
-  return {
-    number: invoice.number,
-    carrier: invoice.carrier,
-    container: invoice.container,
-    billed: invoice.billed,
-    currency: invoice.currency,
-    invoiceDate: invoice.invoiceDate,
-    partyId: invoice.partyId,
-    lines: invoice.lines,
-    pdf: invoice.pdf,
-  };
-}
-
-function conventionOf(summary: Summary, convention: "day0" | "day1", findings: readonly (ReportFindingSource & { convention: string | null })[], invoices: ReadonlyMap<string, LoadedInvoice>): ConventionSource {
-  return {
-    total: summary.total[convention],
-    invoices: summary.invoices[convention].flatMap((row) => {
-      const invoice = invoices.get(row.invoice_id);
-      if (invoice === undefined) return [];
-      return [{
-        number: invoice.number,
-        disputable: row.disputable,
-        currency: invoice.currency,
-        doNotPursue: row.do_not_pursue,
-        supersededBy: row.superseded_by,
-      }];
-    }),
-    findings: findings.flatMap((finding) => {
-      const { convention: chosen, ...rest } = finding;
-      return chosen === convention ? [rest] : [];
-    }),
-  };
-}
-
-function ratesOf(config: CustomerConfig): { partyId: string; bands: RateBand[] }[] {
-  return (config.contract_terms ?? []).map((term) => ({
-    partyId: term.billing_party,
-    bands: term.rates
-      .filter((rate) => rate.charge === "demurrage")
-      .map((rate) => {
-        const band: RateBand = { fromDay: rate.from_day, perDay: rate.per_day };
-        if (rate.to_day !== undefined) band.toDay = rate.to_day;
-        return band;
-      }),
-  }));
 }
 
 function parseSummary(value: unknown): Summary | null {
@@ -569,59 +352,6 @@ function sameIds(left: readonly string[], right: readonly string[]): boolean {
   const a = [...left].sort();
   const b = [...right].sort();
   return a.length === b.length && a.every((id, index) => id === b[index]);
-}
-
-function group<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>();
-  for (const row of rows) {
-    const id = key(row);
-    const list = map.get(id) ?? [];
-    list.push(row);
-    map.set(id, list);
-  }
-  return map;
-}
-
-function textOf(rows: readonly { element_key: string; text: string | null; value: string | null }[], key: string): string | null {
-  const row = rows.find((item) => item.element_key === key);
-  if (row === undefined) return null;
-  return row.value ?? row.text;
-}
-
-function moneyOf(rows: readonly { element_key: string; text: string | null; value: string | null }[], key: string): string | null {
-  const row = rows.find((item) => item.element_key === key);
-  if (row === undefined) return null;
-  if (row.value !== null && MONEY.test(row.value)) return row.value;
-  const match = row.text?.match(/(\d+\.\d{2})/);
-  return match?.[1] ?? null;
-}
-
-function isoOf(value: string | null): string | null {
-  if (value === null) return null;
-  return ISO.test(value) ? value : null;
-}
-
-function twoDecimals(value: string): string {
-  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
-  if (match?.[2] === undefined) return value;
-  const frac = (match[3] ?? "00").slice(0, 2).padEnd(2, "0");
-  return `${match[1] ?? ""}${match[2]}.${frac}`;
-}
-
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
-}
-
-function evidenceList(value: unknown): { page: number | null; field: string }[] {
-  if (!Array.isArray(value)) return [];
-  const items: { page: number | null; field: string }[] = [];
-  for (const item of value) {
-    if (!isRecord(item) || typeof item.field !== "string") continue;
-    const page = typeof item.page === "number" && Number.isInteger(item.page) && item.page > 0 ? item.page : null;
-    items.push({ page, field: item.field });
-  }
-  return items;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -23,7 +23,9 @@ describe("dd-web boundary", () => {
         text.includes("dd-extract") ||
         text.includes("@anthropic-ai/sdk") ||
         text.includes("packages/extract") ||
-        text.includes("dangerouslySetInnerHTML")
+        text.includes("dangerouslySetInnerHTML") ||
+        text.includes("@react-pdf/renderer") ||
+        text.includes("pdf-lib")
       );
     });
     expect(banned).toEqual([]);

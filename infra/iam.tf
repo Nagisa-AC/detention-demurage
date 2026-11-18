@@ -33,12 +33,11 @@ data "aws_iam_policy_document" "web" {
     resources = ["${local.bucket_arn}/documents/*"]
   }
 
-  # Stored client reports only. No DeleteObject, and no other prefix.
+  # The worker writes reports. The web app only streams a stored file. No DeleteObject.
   statement {
-    sid     = "ReadAndWriteReports"
-    effect  = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject"]
-
+    sid       = "ReadReports"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
     resources = ["${local.bucket_arn}/reports/*"]
   }
 }
@@ -85,6 +84,15 @@ data "aws_iam_policy_document" "worker" {
     effect    = "Allow"
     actions   = ["s3:GetObject"]
     resources = ["${local.bucket_arn}/deploy/*"]
+  }
+
+  # The worker writes the PDF and CSV and can read them back. No DeleteObject.
+  statement {
+    sid     = "ReadAndWriteReports"
+    effect  = "Allow"
+    actions = ["s3:GetObject", "s3:PutObject"]
+
+    resources = ["${local.bucket_arn}/reports/*"]
   }
 
   statement {

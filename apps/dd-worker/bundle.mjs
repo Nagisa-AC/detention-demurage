@@ -27,15 +27,39 @@ fs.mkdirSync(dist, { recursive: true });
 const requireBanner =
   'import { createRequire as __ddCreateRequire } from "node:module"; const require = __ddCreateRequire(import.meta.url);';
 
+const pdfkitPackages = fs.globSync("node_modules/.pnpm/pdfkit@*/node_modules/pdfkit/package.json", { cwd: repoRoot });
+if (pdfkitPackages.length !== 1) {
+  console.error("Expected one pdfkit package in the store.");
+  process.exit(1);
+}
+const pdfkitRoot = path.dirname(path.join(repoRoot, pdfkitPackages[0] ?? ""));
+
 const common = {
   bundle: true,
   platform: "node",
   format: "esm",
   target: "node24",
   legalComments: "eof",
+  jsx: "automatic",
   external: ["@napi-rs/canvas", "pg-native"],
   banner: { js: requireBanner },
   logLevel: "warning",
+  plugins: [
+    {
+      name: "pdfkit-imports",
+      setup(build) {
+        // pdfkit's node build calls require("#standard-fonts/…"), which is not a real module.
+        build.onLoad({ filter: /pdfkit\.node\.mjs$/ }, async (args) => {
+          const text = await fs.promises.readFile(args.path, "utf8");
+          const contents = text.replaceAll(/require\$1\('(#standard-fonts\/[^']+)'\)/g, (_match, spec) => {
+            const face = spec.slice("#standard-fonts/".length);
+            return `require(${JSON.stringify(path.join(pdfkitRoot, "js/standard-fonts", `${face}.cjs`))})`;
+          });
+          return { contents, loader: "js" };
+        });
+      },
+    },
+  ],
 };
 
 await esbuild.build({
@@ -44,6 +68,7 @@ await esbuild.build({
   outfile: path.join(stage, "main.mjs"),
 });
 fs.copyFileSync(workerFile, path.join(stage, "pdf.worker.mjs"));
+fs.cpSync(path.join(here, "fonts"), path.join(stage, "fonts"), { recursive: true });
 
 execFileSync(process.execPath, [path.join(stage, "main.mjs"), "--self-check"], { stdio: "inherit" });
 execFileSync(process.execPath, [path.join(stage, "main.mjs"), "--check-pdf", path.join(repoRoot, "fixtures/synthetic/clean.pdf")], {
@@ -51,7 +76,8 @@ execFileSync(process.execPath, [path.join(stage, "main.mjs"), "--check-pdf", pat
 });
 
 const tarPath = path.join(dist, "dd-worker.tar");
-execFileSync("tar", ["-cf", tarPath, "-C", stage, "main.mjs", "pdf.worker.mjs"], { stdio: "inherit" });
+const fontNames = fs.readdirSync(path.join(stage, "fonts")).sort().map((name) => path.join("fonts", name));
+execFileSync("tar", ["-cf", tarPath, "-C", stage, "main.mjs", "pdf.worker.mjs", ...fontNames], { stdio: "inherit" });
 const sha = createHash("sha256").update(fs.readFileSync(tarPath)).digest("hex");
 fs.writeFileSync(path.join(dist, "dd-worker.sha256"), `${sha}\n`);
 fs.rmSync(stage, { recursive: true, force: true });

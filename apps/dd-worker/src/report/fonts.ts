@@ -7,9 +7,10 @@ const dir = fontDir();
 
 function fontDir(): string {
   const candidates = [
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "fonts"),
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../fonts"),
     path.join(process.cwd(), "fonts"),
-    path.join(process.cwd(), "apps/dd-web/fonts"),
+    path.join(process.cwd(), "apps/dd-worker/fonts"),
   ];
   return candidates.find((candidate) => fs.existsSync(path.join(candidate, "Inter-Regular.ttf"))) ?? candidates[0] ?? "fonts";
 }

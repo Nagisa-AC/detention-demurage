@@ -7,7 +7,7 @@ import { Client, Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { extractionValues } from "./model.js";
 import { processDocument, sha256Hex, type GroundPage, type ProcessResult } from "./process.js";
-import { claimNext, finishRun, loadRunDocument, requeueRun, type ClaimedRun } from "./queue.js";
+import { claimNext, finishRun, loadRunDocument, requeueRun, type ClaimedExtract, type ClaimedRun } from "./queue.js";
 import { pagesFromFixture, textOf } from "./synthetic-pages.js";
 import { runOnce } from "./loop.js";
 
@@ -84,7 +84,7 @@ describe("extract queue", () => {
     const crashed = await claimNext(pool, 0);
     expect(crashed?.id).toBe(claimed[0]?.id);
     expect(crashed?.attempts).toBe(2);
-    if (crashed === null) throw new Error("missing reclaim");
+    if (crashed === null || crashed.kind !== "extract") throw new Error("missing reclaim");
     await finishRun(pool, crashed, {
       permanent: false,
       pages: [{ page: 1, status: "failed", reason: "checksum", ungrounded: [] }],
@@ -95,7 +95,7 @@ describe("extract queue", () => {
 
     const third = await claimNext(pool, 3600);
     expect(third?.attempts).toBe(3);
-    if (third === null) throw new Error("missing third claim");
+    if (third === null || third.kind !== "extract") throw new Error("missing third claim");
     await finishRun(pool, third, {
       permanent: true,
       pages: [{ page: 1, status: "failed", reason: "checksum", ungrounded: [] }],
@@ -134,6 +134,39 @@ describe("extract queue", () => {
       page_records: null,
     });
     expect(await requeueRun(pool, "00000000-0000-4000-8000-000000000000")).toBe(false);
+  });
+
+  it("claims a report run beside an extract run, oldest first", async () => {
+    const customer = await pool.query<{ id: string }>(
+      `INSERT INTO "Customer" (config_id, display_name) VALUES ('worker_report_claim', 'Sample') RETURNING id`,
+    );
+    const customerId = requiredId(customer.rows[0]?.id);
+    const document = await pool.query<{ id: string }>(
+      `INSERT INTO "Document" (customer_id, sha256, byte_size, storage_key)
+       VALUES ($1, $2, 10, $3) RETURNING id`,
+      [customerId, hash, `documents/${customerId}/${hash}.pdf`],
+    );
+    const documentId = requiredId(document.rows[0]?.id);
+    await pool.query(
+      `INSERT INTO "ProcessingRun" (customer_id, kind, page_records, started_at)
+       VALUES ($1, 'report', $2::jsonb, now() - interval '2 hours')`,
+      [customerId, JSON.stringify({ rules_run_id: "00000000-0000-4000-8000-0000000000aa", firm_profile_version: 1, actor: "Ada" })],
+    );
+    await pool.query(
+      `INSERT INTO "ProcessingRun" (customer_id, document_id, kind, started_at)
+       VALUES ($1, $2, 'extract', now() - interval '1 hour')`,
+      [customerId, documentId],
+    );
+    try {
+      const first = await claimNext(pool, 3600);
+      const second = await claimNext(pool, 3600);
+      expect(first).toMatchObject({ kind: "report", customerId });
+      expect(second).toMatchObject({ kind: "extract", customerId });
+    } finally {
+      await pool.query(`DELETE FROM "ProcessingRun" WHERE customer_id = $1`, [customerId]);
+      await pool.query(`DELETE FROM "Document" WHERE customer_id = $1`, [customerId]);
+      await pool.query(`DELETE FROM "Customer" WHERE id = $1`, [customerId]);
+    }
   });
 });
 
@@ -351,6 +384,7 @@ describe("saved read", () => {
         return readFixture(file, declaredHash, [bad]);
       },
       finish: (run, result) => finishRun(pool, run, result),
+      report: async () => "finished",
       log: (entry) => logs.push(entry),
     });
     expect(calls).toBe(1);
@@ -382,6 +416,7 @@ describe("saved read", () => {
       download: async () => pdf,
       process: (file, declaredHash) => readFixture(file, declaredHash, [clean, skipped], [textOf(clean), "middle page", "tail page"]),
       finish: (run, result) => finishRun(pool, run, result),
+      report: async () => "finished",
       log: (entry) => stitchLogs.push(entry),
     });
     expect(stitchLogs[0]).toBe(`run ${stitchClaim.id} failed process StitchFailure`);
@@ -403,7 +438,7 @@ describe("saved read", () => {
     await pool.query(`UPDATE "Invoice" SET unresolved = NULL`);
     expect(await requeueRun(pool, claimed.id)).toBe(true);
     const again = await claimNext(pool, 3600);
-    if (again === null) throw new Error("missing reclaim");
+    if (again === null || again.kind !== "extract") throw new Error("missing reclaim");
     const [clean] = pagesFromFixture("clean");
     if (clean === undefined) throw new Error("missing page");
     const changed = pageExtractionSchema.parse({ ...clean, invoice_number: "SYN-CHANGED" });
@@ -453,7 +488,7 @@ describe("saved read", () => {
   });
 });
 
-async function seed(configId: string, hash: string, attempts = 0): Promise<ClaimedRun> {
+async function seed(configId: string, hash: string, attempts = 0): Promise<ClaimedExtract> {
   const customer = await pool.query<{ id: string }>(
     `INSERT INTO "Customer" (config_id, display_name) VALUES ($1, 'Sample') RETURNING id`,
     [configId],
@@ -472,7 +507,7 @@ async function seed(configId: string, hash: string, attempts = 0): Promise<Claim
   );
   const runId = requiredId(inserted.rows[0]?.id);
   const claimed = await claimNext(pool, 3600);
-  if (claimed?.id !== runId) throw new Error("missing claim");
+  if (claimed === null || claimed.kind !== "extract" || claimed.id !== runId) throw new Error("missing claim");
   return claimed;
 }
 

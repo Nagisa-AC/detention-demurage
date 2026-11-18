@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { PDFDocument, PDFHexString, StandardFonts, rgb } from "pdf-lib";
-import { renderExhibits } from "./exhibits";
-import type { ReportBuild } from "./model";
-import { renderFront, renderScope } from "./pdf";
+import { renderExhibits } from "./exhibits.js";
+import type { ReportBuild } from "./model.js";
+import { renderFront, renderScope } from "./pdf.js";
 
 const mute = rgb(102 / 255, 101 / 255, 94 / 255);
 

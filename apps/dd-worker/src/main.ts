@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { fromInstanceMetadata } from "@aws-sdk/credential-providers";
 import { extract } from "dd-extract";
@@ -15,6 +15,8 @@ import { readModelPages } from "./model.js";
 import { readPdfPages } from "./pdf-text.js";
 import { processDocument, sha256Hex } from "./process.js";
 import { claimNext, finishRun, loadRunDocument, requeueRun } from "./queue.js";
+import { renderProbePage } from "./report/check.js";
+import { runReport } from "./report/run.js";
 import { assertDatabaseTls, DATABASE_PARAMETER, readWorkerSecrets } from "./ssm.js";
 
 const REGION = "us-east-2";
@@ -56,6 +58,20 @@ export async function main(): Promise<void> {
           log,
         }),
       finish: (claimed, result) => finishRun(pool, claimed, result),
+      report: (claimed) =>
+        runReport({
+          pool,
+          claimed,
+          download: async (key) => {
+            const out = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+            const bytes = await out.Body?.transformToByteArray();
+            if (bytes === undefined) throw new Error("The document object is empty.");
+            return bytes;
+          },
+          put: async (key, body, contentType) => {
+            await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
+          },
+        }),
       log: (line) => console.info(line),
     });
     if (outcome === "idle") await delay(5000);
@@ -72,20 +88,8 @@ const entry = process.argv[1];
 if (entry !== undefined && path.resolve(entry) === fileURLToPath(import.meta.url)) {
   const command = process.argv[2];
   if (command === "--self-check") {
-    // Importing the modules above evaluates them. Stop before SSM, S3, Postgres, or the model.
-    if (
-      typeof S3Client !== "function" ||
-      typeof SSMClient !== "function" ||
-      typeof pg.Pool !== "function" ||
-      typeof getDocument !== "function" ||
-      typeof extract !== "function"
-    ) {
-      console.error("The bundle self-check did not load S3, SSM, pg, pdfjs, and extract.");
-      process.exit(1);
-    }
-    process.exit(0);
-  }
-  if (command === "--check-pdf") {
+    void checkSelf().then((code) => process.exit(code));
+  } else if (command === "--check-pdf") {
     void checkPdf(process.argv[3]).then((code) => process.exit(code));
   } else if (command === "--requeue") {
     void requeue(process.argv[3] ?? "");
@@ -94,6 +98,32 @@ if (entry !== undefined && path.resolve(entry) === fileURLToPath(import.meta.url
   } else {
     void main();
   }
+}
+
+async function checkSelf(): Promise<number> {
+  // Importing the modules above evaluates them. Stop before SSM, S3, Postgres, or the model.
+  if (
+    typeof S3Client !== "function" ||
+    typeof SSMClient !== "function" ||
+    typeof pg.Pool !== "function" ||
+    typeof getDocument !== "function" ||
+    typeof extract !== "function"
+  ) {
+    console.error("The bundle self-check did not load S3, SSM, pg, pdfjs, and extract.");
+    return 1;
+  }
+  try {
+    const page = await renderProbePage();
+    if (page.length < 5 || page[0] !== 0x25 || page[1] !== 0x50 || page[2] !== 0x44 || page[3] !== 0x46) {
+      console.error("The bundle self-check did not render a report page.");
+      return 1;
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Error";
+    console.error(`The bundle self-check did not render a report page. ${detail}`);
+    return 1;
+  }
+  return 0;
 }
 
 /**

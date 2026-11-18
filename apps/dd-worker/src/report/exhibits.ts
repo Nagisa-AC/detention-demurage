@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { PDFDocument, StandardFonts, rgb, type PDFEmbeddedPage, type PDFFont } from "pdf-lib";
-import type { ReportBuild } from "./model";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import type { ReportBuild } from "./model.js";
 
 const ink = rgb(26 / 255, 26 / 255, 23 / 255);
 const mute = rgb(102 / 255, 101 / 255, 94 / 255);
@@ -255,26 +258,34 @@ function boxesFor(items: readonly TextItem[], needles: readonly string[]): Hit[]
   return boxes;
 }
 
+function useBundledWorker(): void {
+  const beside = new URL("./pdf.worker.mjs", import.meta.url);
+  if (existsSync(fileURLToPath(beside))) GlobalWorkerOptions.workerSrc = beside.href;
+}
+
 async function textItems(pdf: Uint8Array, pageNumber: number): Promise<TextItem[]> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs") as {
-    getDocument: (input: { data: Uint8Array; verbosity?: number }) => { promise: Promise<{ getPage: (page: number) => Promise<{ getTextContent: () => Promise<{ items: unknown[] }> }> }> };
-  };
-  const doc = await pdfjs.getDocument({ data: pdf.slice(), verbosity: 0 }).promise;
-  const page = await doc.getPage(pageNumber);
-  const content = await page.getTextContent();
-  const items: TextItem[] = [];
-  for (const item of content.items) {
-    if (typeof item !== "object" || item === null || !("str" in item)) continue;
-    const record = item as { str?: unknown; transform?: unknown; width?: unknown; height?: unknown };
-    if (typeof record.str !== "string" || !Array.isArray(record.transform)) continue;
-    items.push({
-      str: record.str,
-      transform: record.transform.filter((value): value is number => typeof value === "number"),
-      width: typeof record.width === "number" ? record.width : 0,
-      height: typeof record.height === "number" ? record.height : 0,
-    });
+  useBundledWorker();
+  const task = getDocument({ data: pdf.slice(), verbosity: 0 });
+  try {
+    const doc = await task.promise;
+    const page = await doc.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const items: TextItem[] = [];
+    for (const item of content.items) {
+      if (typeof item !== "object" || item === null || !("str" in item)) continue;
+      const record = item as { str?: unknown; transform?: unknown; width?: unknown; height?: unknown };
+      if (typeof record.str !== "string" || !Array.isArray(record.transform)) continue;
+      items.push({
+        str: record.str,
+        transform: record.transform.filter((value): value is number => typeof value === "number"),
+        width: typeof record.width === "number" ? record.width : 0,
+        height: typeof record.height === "number" ? record.height : 0,
+      });
+    }
+    return items;
+  } finally {
+    await task.destroy();
   }
-  return items;
 }
 
 function wrap(text: string, font: PDFFont, size: number, width: number): string[] {

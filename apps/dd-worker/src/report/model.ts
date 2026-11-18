@@ -1,5 +1,4 @@
-import { ruleLabel } from "../findings-view";
-import { formatAmount, minusAmount, sumAmounts } from "../review-format";
+import { formatAmount, minusAmount, ruleLabel, sumAmounts } from "./format.js";
 import {
   REPORT_SERIES,
   amberNote,
@@ -44,7 +43,7 @@ import {
   type RateBand,
   type ReportFindingInput,
   type ReportLine,
-} from "./wording";
+} from "./wording.js";
 
 export type Money = { currency: string; amount: string };
 

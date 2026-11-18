@@ -103,8 +103,9 @@ describe("terraform plan", () => {
     expect(actions(worker, "s3:GetObject").sort()).toEqual([
       "arn:aws:s3:::dd-recovery-plan-test/deploy/*",
       "arn:aws:s3:::dd-recovery-plan-test/documents/*",
+      "arn:aws:s3:::dd-recovery-plan-test/reports/*",
     ]);
-    expect(worker.flatMap((item) => item.actions)).not.toContain("s3:PutObject");
+    expect(actions(worker, "s3:PutObject")).toEqual(["arn:aws:s3:::dd-recovery-plan-test/reports/*"]);
     expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/database-url"))).toBe(true);
     expect(actions(worker, "ssm:GetParameter").some((arn) => arn.endsWith("parameter/dd/worker/anthropic-api-key"))).toBe(true);
     const all = JSON.stringify(plan);
@@ -136,7 +137,6 @@ describe("terraform plan", () => {
       "s3:GetObject",
       "s3:GetObject",
       "s3:PutObject",
-      "s3:PutObject",
     ]);
     expect(actions(web, "s3:GetObject").sort()).toEqual([
       "arn:aws:s3:::dd-recovery-plan-test/documents/*",
@@ -146,7 +146,6 @@ describe("terraform plan", () => {
     expect(actions(web, "s3:PutObject").sort()).toEqual([
       "arn:aws:s3:::dd-recovery-plan-test/documents/*",
       "arn:aws:s3:::dd-recovery-plan-test/incoming/*",
-      "arn:aws:s3:::dd-recovery-plan-test/reports/*",
     ]);
   });
 

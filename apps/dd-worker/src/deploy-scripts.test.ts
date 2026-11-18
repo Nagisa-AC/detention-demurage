@@ -28,6 +28,7 @@ describe("worker scripts", () => {
     const missing = install.indexOf("The dd-worker unit is missing; check /var/log/cloud-init-output.log");
     expect(missing).toBeGreaterThan(-1);
     expect(missing).toBeLessThan(install.indexOf("tar -C /opt/dd-worker"));
+    expect(install).toContain("fonts/Inter-Regular.ttf");
     const restartAt = install.indexOf("systemctl restart dd-worker");
     const sleepAt = install.indexOf("sleep 15");
     const restartsAt = install.indexOf("systemctl show -p NRestarts --value dd-worker");
@@ -79,14 +80,25 @@ describe("worker scripts", () => {
 });
 
 describe("worker bundle", () => {
-  it("writes a tarball of main.mjs and pdf.worker.mjs and records its sha256", () => {
+  it("writes a tarball of the worker, the pdf.js worker, and the report fonts", () => {
     execFileSync(process.execPath, ["apps/dd-worker/bundle.mjs"], { cwd: repoRoot, stdio: "inherit" });
     const tarPath = path.join(repoRoot, "dist/dd-worker.tar");
     const tar = fs.readFileSync(tarPath);
     const sha = fs.readFileSync(path.join(repoRoot, "dist/dd-worker.sha256"), "utf8").trim();
     expect(sha).toBe(createHash("sha256").update(tar).digest("hex"));
     const names = execFileSync("tar", ["-tf", tarPath], { encoding: "utf8" }).trim().split("\n").sort();
-    expect(names).toEqual(["main.mjs", "pdf.worker.mjs"]);
+    expect(names).toEqual([
+      "fonts/DejaVu-copyright.txt",
+      "fonts/DejaVuSansMono-Bold.ttf",
+      "fonts/DejaVuSansMono.ttf",
+      "fonts/Inter-Bold.ttf",
+      "fonts/Inter-Medium.ttf",
+      "fonts/Inter-OFL.txt",
+      "fonts/Inter-Regular.ttf",
+      "fonts/Inter-SemiBold.ttf",
+      "main.mjs",
+      "pdf.worker.mjs",
+    ]);
     const main = execFileSync("tar", ["-xOf", tarPath, "main.mjs"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     expect(main.startsWith('import { createRequire as __ddCreateRequire } from "node:module"; const require = __ddCreateRequire(import.meta.url);')).toBe(true);
     const bundle = fs.readFileSync(path.join(repoRoot, "apps/dd-worker/bundle.mjs"), "utf8");
@@ -97,6 +109,7 @@ describe("worker bundle", () => {
     expect(main).toContain("--diagnose");
     expect(main).toContain("refused not_synthetic");
     expect(main).toContain("The bundled reader could not split the PDF.");
-    expect(main).toContain("pdf.slice()");
+    expect(main).toMatch(/getDocument\(\{ data: \w+\.slice\(\), verbosity: 0 \}\)/);
+    expect(main).toContain("The bundle self-check did not render a report page.");
   }, 60_000);
 });

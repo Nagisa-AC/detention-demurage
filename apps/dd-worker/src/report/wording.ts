@@ -5,7 +5,7 @@
  */
 
 import { addDays } from "dd-core";
-import { formatAmount } from "../review-format";
+import { formatAmount } from "./format.js";
 
 export const REPORT_SERIES = "TMR";
 export const ISSUANCE_LIMIT_DAYS = 30;

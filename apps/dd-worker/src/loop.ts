@@ -1,5 +1,5 @@
 import { NormalizeError, StitchFailure } from "./errors.js";
-import type { ClaimedRun } from "./queue.js";
+import type { ClaimedExtract, ClaimedReport, ClaimedRun } from "./queue.js";
 import type { ProcessResult, StoredPage } from "./process.js";
 
 type Stage = "download" | "process" | "finish";
@@ -8,12 +8,22 @@ export async function runOnce(deps: {
   claim: () => Promise<ClaimedRun | null>;
   download: (key: string) => Promise<Uint8Array>;
   process: (pdf: Uint8Array, declaredHash: string, log: (line: string) => void) => Promise<ProcessResult>;
-  finish: (claimed: ClaimedRun, result: ProcessResult & { permanent: boolean }) => Promise<void>;
+  finish: (claimed: ClaimedExtract, result: ProcessResult & { permanent: boolean }) => Promise<void>;
+  report: (claimed: ClaimedReport) => Promise<"finished" | "retry">;
   log: (line: string) => void;
 }): Promise<"idle" | "finished"> {
   const claimed = await deps.claim();
   if (claimed === null) return "idle";
   const log = (line: string) => deps.log(`run ${claimed.id} ${line}`);
+  if (claimed.kind === "report") {
+    try {
+      const outcome = await deps.report(claimed);
+      log(outcome === "retry" ? "retry" : "finished");
+    } catch (error) {
+      log(`failed ${describeFailure("finish", error)}`);
+    }
+    return "finished";
+  }
   let stage: Stage = "download";
   let result: ProcessResult;
   let terminal = false;

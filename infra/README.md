@@ -4,7 +4,7 @@ You apply this. CI plans it and does not apply it.
 
 The account SCP denies `iam:*Provider*` on the free and paid plans of the new sign-up experience, so this configuration does not create an OIDC provider. The web app uses one IAM user, `dd-web`. Revisit Vercel OIDC at M4, when the account moves to advanced features.
 
-`dd-web` has no console login. Its only policy allows `s3:PutObject` on `incoming/*` and `documents/*`, and `s3:GetObject` on `incoming/*` and `documents/*`. Terraform does not create the access key, so the secret stays out of state.
+`dd-web` has no console login. Its only policy allows `s3:PutObject` on `incoming/*` and `documents/*`, and `s3:GetObject` on `incoming/*`, `documents/*`, and `reports/*`. Terraform does not create the access key, so the secret stays out of state.
 
 The bucket allows a browser `PUT` from `upload_origin` only. That origin is `https://detention-demurage.vercel.app`. The allowed headers are `content-length`, `content-type`, and `x-amz-checksum-sha256`. There is no wildcard.
 
@@ -32,9 +32,9 @@ The worker still reads `/dd/worker/database-url` and `/dd/worker/anthropic-api-k
 
 ## Worker program
 
-The worker is one `t4g.micro` (1 GB). The running total is about $32 a month. `pnpm worker:bundle` writes `dist/dd-worker.tar` and `dist/dd-worker.sha256`. The tarball is `main.mjs` and `pdf.worker.mjs`. The unit runs `/usr/bin/node-24`, which is the `nodejs24` package, and `MemoryMax` is 768M. User data writes that unit and reloads systemd before it installs Node, and it retries the install three times. Applying a user-data change replaces the instance, because `user_data_replace_on_change` is set. After apply, the instance id is `terraform output -raw worker_instance_id`.
+The worker is one `t4g.micro` (1 GB). The running total is about $32 a month. `pnpm worker:bundle` writes `dist/dd-worker.tar` and `dist/dd-worker.sha256`. The tarball is `main.mjs`, `pdf.worker.mjs`, and the report fonts. The unit runs `/usr/bin/node-24`, which is the `nodejs24` package, and `MemoryMax` is 768M. User data writes that unit and reloads systemd before it installs Node, and it retries the install three times. Applying a user-data change replaces the instance, because `user_data_replace_on_change` is set. After apply, the instance id is `terraform output -raw worker_instance_id`.
 
-The worker role can `s3:GetObject` on `deploy/*`. Upload and install from a clean tree:
+The worker role can `s3:GetObject` on `deploy/*`, `documents/*`, and `reports/*`, and `s3:PutObject` on `reports/*`. There is no `s3:DeleteObject`. Upload and install from a clean tree:
 
 ```sh
 scripts/deploy-worker.sh

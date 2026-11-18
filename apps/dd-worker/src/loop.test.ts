@@ -7,6 +7,7 @@ import type { ProcessResult } from "./process.js";
 
 function claimedRun(id: string, attempts: number): ClaimedRun {
   return {
+    kind: "extract",
     id,
     customerId: "cust",
     documentId: "doc",
@@ -17,12 +18,15 @@ function claimedRun(id: string, attempts: number): ClaimedRun {
   };
 }
 
+const ignoreReport = async (): Promise<"finished" | "retry"> => "finished";
+
 describe("runOnce", () => {
   it("does not log a filename carried by a failed download", async () => {
     const secret = "marked-secret-filename";
     const logs: string[] = [];
     let finished: (ProcessResult & { permanent: boolean }) | undefined;
     const claimed: ClaimedRun = {
+      kind: "extract",
       id: "run-1",
       customerId: "cust",
       documentId: "doc",
@@ -41,6 +45,7 @@ describe("runOnce", () => {
       finish: async (_claimed, result) => {
         finished = result;
       },
+      report: ignoreReport,
       log: (line) => logs.push(line),
     });
     expect(outcome).toBe("finished");
@@ -67,6 +72,7 @@ describe("runOnce", () => {
       finish: async (_claimed, result) => {
         finished = result;
       },
+      report: ignoreReport,
       log: (line) => logs.push(line),
     });
     expect(logs).toEqual(["run run-process failed process Error ETIMEDOUT", "run run-process retry"]);
@@ -96,7 +102,8 @@ describe("runOnce", () => {
         finish: async (_claimed, result) => {
           reason = result.pages[0]?.reason ?? "";
         },
-        log: (line) => logs.push(line),
+        report: ignoreReport,
+      log: (line) => logs.push(line),
       });
       const code = "code" in error && typeof error.code === "string" ? ` ${error.code}` : "";
       const line = `run typed failed process ${error.name}${code}`;
@@ -124,6 +131,7 @@ describe("runOnce", () => {
         schemaVersion: null,
       }),
       finish: () => Promise.reject(error),
+      report: ignoreReport,
       log: (line) => logs.push(line),
     });
     expect(logs).toEqual(["run run-finish failed finish DatabaseError 28P01"]);
@@ -134,6 +142,7 @@ describe("runOnce", () => {
     let permanent = false;
     await runOnce({
       claim: async () => ({
+        kind: "extract" as const,
         id: "run-3",
         customerId: "cust",
         documentId: "doc",
@@ -147,6 +156,7 @@ describe("runOnce", () => {
       finish: async (_claimed, result) => {
         permanent = result.permanent;
       },
+      report: ignoreReport,
       log: () => undefined,
     });
     expect(permanent).toBe(true);
@@ -156,6 +166,7 @@ describe("runOnce", () => {
     const logs: string[] = [];
     await runOnce({
       claim: async () => ({
+        kind: "extract" as const,
         id: "run-9",
         customerId: "cust",
         documentId: "doc",
@@ -177,6 +188,7 @@ describe("runOnce", () => {
         };
       },
       finish: async () => undefined,
+      report: ignoreReport,
       log: (line) => logs.push(line),
     });
     expect(logs).toEqual(["run run-9 document read", "run run-9 finished"]);
