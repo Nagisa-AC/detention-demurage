@@ -13,7 +13,13 @@ export type MoneyTotal = { amount: string; currency: string };
 
 export type ConventionSlice = {
   checks: CheckCell[];
+  /** Each finding's amount. Used only when this run did not store a per-invoice total. */
   amounts: string[];
+  /** The stored counted amount. Null on a run that predates the per-invoice list. */
+  disputable: string | null;
+  recorded: boolean;
+  doNotPursue: boolean;
+  supersededBy: string;
   findingId: string | null;
   daysWarn: boolean;
   manual: boolean;
@@ -250,6 +256,12 @@ type InvoiceFacts = {
   lastCharge: string | null;
 };
 
+type StoredInvoiceAmount = {
+  disputable: string;
+  doNotPursue: boolean;
+  supersededBy: string;
+};
+
 type RunFacts = {
   id: string;
   ranAt: string;
@@ -259,6 +271,8 @@ type RunFacts = {
   day1Total: MoneyTotal | null;
   needsDay0: Set<string>;
   needsDay1: Set<string>;
+  day0Invoices: Map<string, StoredInvoiceAmount> | null;
+  day1Invoices: Map<string, StoredInvoiceAmount> | null;
 };
 
 async function latestRun(sql: ReviewSql, customerId: string): Promise<RunFacts | null> {
@@ -410,16 +424,20 @@ function toRow(invoice: InvoiceFacts, findings: readonly StoredFindingView[], ru
     invoiceDate: date,
     days,
     refused: invoice.partyId !== null && refused.has(invoice.partyId),
-    day0: sliceOf(day0, run?.needsDay0.has(invoice.number) ?? false),
-    day1: sliceOf(day1, run?.needsDay1.has(invoice.number) ?? false),
+    day0: sliceOf(day0, run?.needsDay0.has(invoice.number) ?? false, run?.day0Invoices?.get(invoice.id) ?? null),
+    day1: sliceOf(day1, run?.needsDay1.has(invoice.number) ?? false, run?.day1Invoices?.get(invoice.id) ?? null),
   };
 }
 
-function sliceOf(findings: readonly StoredFindingView[], needsInfo: boolean): ConventionSlice {
+function sliceOf(findings: readonly StoredFindingView[], needsInfo: boolean, stored: StoredInvoiceAmount | null): ConventionSlice {
   const lead = leadFinding(findings);
   return {
     checks: findings.length === 0 ? [] : checkCells(findings),
     amounts: findings.map((finding) => finding.amount),
+    disputable: stored?.disputable ?? null,
+    recorded: stored !== null,
+    doNotPursue: stored?.doNotPursue ?? false,
+    supersededBy: stored?.supersededBy ?? "",
     findingId: lead?.id ?? null,
     daysWarn: findings.some((finding) => finding.rule === "R2"),
     manual: findings.some((finding) => finding.rule === "manual"),
@@ -463,6 +481,7 @@ function parseRun(payload: unknown): Omit<RunFacts, "id" | "ranAt"> {
   const record = isRecord(payload) ? payload : {};
   const totals = isRecord(record.total_disputable) ? record.total_disputable : {};
   const needs = isRecord(record.needs_info) ? record.needs_info : {};
+  const invoices = isRecord(record.invoices) ? record.invoices : null;
   return {
     failed: record.failed === true,
     settingsVersion: typeof record.settings_version === "number" ? record.settings_version : null,
@@ -470,7 +489,24 @@ function parseRun(payload: unknown): Omit<RunFacts, "id" | "ranAt"> {
     day1Total: moneyTotal(totals.day1),
     needsDay0: invoiceIds(needs.day0),
     needsDay1: invoiceIds(needs.day1),
+    day0Invoices: invoices === null ? null : invoiceAmounts(invoices.day0),
+    day1Invoices: invoices === null ? null : invoiceAmounts(invoices.day1),
   };
+}
+
+function invoiceAmounts(value: unknown): Map<string, StoredInvoiceAmount> | null {
+  if (!Array.isArray(value)) return null;
+  const amounts = new Map<string, StoredInvoiceAmount>();
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.invoice_id !== "string" || typeof item.disputable !== "string") continue;
+    if (typeof item.do_not_pursue !== "boolean" || typeof item.superseded_by !== "string") continue;
+    amounts.set(item.invoice_id, {
+      disputable: item.disputable,
+      doNotPursue: item.do_not_pursue,
+      supersededBy: item.superseded_by,
+    });
+  }
+  return amounts;
 }
 
 function moneyTotal(value: unknown): MoneyTotal | null {

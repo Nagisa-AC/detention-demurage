@@ -206,7 +206,7 @@ describe("dd commands", () => {
       const day1 = JSON.parse(day1File.toString("utf8")) as {
         total_disputable: { currency: string; amount: string }[];
         findings: { invoice_id: string; rule: string; disputable_amount: string }[];
-        invoices: { invoice_id: string; run_id?: string }[];
+        invoices: { invoice_id: string; run_id?: string; disputable?: string; do_not_pursue?: boolean; superseded_by?: string; currency?: string }[];
       };
       const day0 = JSON.parse(day0File.toString("utf8")) as typeof day1;
       expect(day1.findings.filter((finding) => finding.invoice_id === "SYN-1004").map((finding) => finding.disputable_amount)).toEqual(["500.00"]);
@@ -216,7 +216,24 @@ describe("dd commands", () => {
       expect(day0.total_disputable).toEqual([{ currency: "USD", amount: "3250.00" }]);
       expect(day1.invoices.map((invoice) => invoice.run_id)).toEqual(day1.invoices.map(() => "batch"));
       const sample = day1.invoices[0];
-      expect(sample === undefined ? [] : Object.keys(sample)).toEqual(["invoice_id", "run_id", "elements", "outcomes"]);
+      expect(sample === undefined ? [] : Object.keys(sample)).toEqual([
+        "invoice_id",
+        "run_id",
+        "elements",
+        "outcomes",
+        "disputable",
+        "currency",
+        "do_not_pursue",
+        "superseded_by",
+      ]);
+      expect(day1.invoices.find((invoice) => invoice.invoice_id === "SYN-1005")?.disputable).toBe("500.00");
+      expect(sumIncluded(day1.invoices)).toEqual(day1.total_disputable);
+      expect(sumIncluded(day0.invoices)).toEqual(day0.total_disputable);
+      const reportDay1 = first.report[3];
+      if (reportDay1 === undefined) throw new Error("day1 report");
+      const reported = JSON.parse(reportDay1.toString("utf8")) as typeof day1;
+      expect(reported.invoices.find((invoice) => invoice.invoice_id === "SYN-1005")?.disputable).toBe("500.00");
+      expect(sumIncluded(reported.invoices)).toEqual(reported.total_disputable);
       expect(new Set(day1.invoices.map((invoice) => invoice.invoice_id)).size).toBe(8);
     } finally {
       globalThis.fetch = original;
@@ -290,6 +307,22 @@ async function reviewDocument(dir: string, hash: string, pages: number, confirms
   });
   if (code !== 0) throw new Error(stderr.join(""));
   return code;
+}
+
+function sumIncluded(
+  invoices: readonly { disputable?: string; currency?: string; do_not_pursue?: boolean; superseded_by?: string }[],
+): { currency: string; amount: string }[] {
+  const cents = new Map<string, number>();
+  for (const invoice of invoices) {
+    if (invoice.do_not_pursue === true || (invoice.superseded_by ?? "") !== "") continue;
+    if (invoice.currency === undefined || invoice.disputable === undefined) continue;
+    const match = /^(\d+)\.(\d{2})$/.exec(invoice.disputable);
+    if (match === null) throw new Error(invoice.disputable);
+    cents.set(invoice.currency, (cents.get(invoice.currency) ?? 0) + Number(match[1]) * 100 + Number(match[2]));
+  }
+  return [...cents.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([currency, value]) => ({ currency, amount: `${Math.trunc(value / 100)}.${String(value % 100).padStart(2, "0")}` }));
 }
 
 function command(dir: string, argv: string[], stderr: string[] = []): CommandIo {

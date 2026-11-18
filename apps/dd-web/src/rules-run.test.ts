@@ -32,7 +32,7 @@ const runId = "00000000-0000-4000-8000-0000000000bb";
 type FixtureId = (typeof fixtureIds)[number];
 
 describe("rules run", () => {
-  it("matches dd-cli findings and totals for the eight synthetic fixtures", () => {
+  it("matches dd-cli findings, totals, and per-invoice amounts for the eight synthetic fixtures", () => {
     const config = harbor();
     const reviewed = fixtureIds.map((id) => reviewFixture(id));
     reviewed.sort((left, right) => left.number.localeCompare(right.number));
@@ -60,6 +60,12 @@ describe("rules run", () => {
     expect(success.summary.invoice_ids).toEqual([clean.id, missing.id]);
     expect(success.summary.total_disputable.day0).toEqual([{ currency: "USD", amount: "300.00" }]);
     expect(success.summary.total_disputable.day1).toEqual([{ currency: "USD", amount: "300.00" }]);
+    const counted = [
+      { invoice_id: clean.id, disputable: "0.00", do_not_pursue: false, superseded_by: "" },
+      { invoice_id: missing.id, disputable: "300.00", do_not_pursue: false, superseded_by: "" },
+    ];
+    expect(success.summary.invoices.day0).toEqual(counted);
+    expect(success.summary.invoices.day1).toEqual(counted);
 
     const blank = storedInvoice("clean", clean.id);
     blank.unresolved = null;
@@ -108,12 +114,25 @@ describe("rules run", () => {
   });
 });
 
-function slice(report: RunReport): Pick<RunReport, "findings" | "total_disputable" | "not_evaluable" | "needs_info"> {
+function slice(report: RunReport): {
+  findings: RunReport["findings"];
+  total_disputable: RunReport["total_disputable"];
+  not_evaluable: RunReport["not_evaluable"];
+  needs_info: RunReport["needs_info"];
+  invoices: Pick<RunReport["invoices"][number], "invoice_id" | "disputable" | "currency" | "do_not_pursue" | "superseded_by">[];
+} {
   return {
     findings: report.findings,
     total_disputable: report.total_disputable,
     not_evaluable: report.not_evaluable,
     needs_info: report.needs_info,
+    invoices: report.invoices.map((invoice) => ({
+      invoice_id: invoice.invoice_id,
+      disputable: invoice.disputable,
+      currency: invoice.currency,
+      do_not_pursue: invoice.do_not_pursue,
+      superseded_by: invoice.superseded_by,
+    })),
   };
 }
 

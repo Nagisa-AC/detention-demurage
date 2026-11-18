@@ -12,6 +12,13 @@ import type { ReviewSql } from "./review-data";
 import { buildRunInvoice, RulesInputError, type StoredChargeLine, type StoredRulesInvoice } from "./rules-input";
 import { readDecisions, type StoredElement } from "./review-view";
 
+export type RulesInvoiceAmount = {
+  invoice_id: string;
+  disputable: string;
+  do_not_pursue: boolean;
+  superseded_by: string;
+};
+
 export type RulesSummary = {
   failed: false;
   settings_version: number;
@@ -19,6 +26,7 @@ export type RulesSummary = {
   not_evaluable: { day0: RunReport["not_evaluable"]; day1: RunReport["not_evaluable"] };
   needs_info: { day0: RunReport["needs_info"]; day1: RunReport["needs_info"] };
   total_disputable: { day0: RunReport["total_disputable"]; day1: RunReport["total_disputable"] };
+  invoices: { day0: RulesInvoiceAmount[]; day1: RulesInvoiceAmount[] };
 };
 
 export type RulesFailure = {
@@ -132,9 +140,25 @@ async function prepareChecks(sql: ReviewSql, customerId: string): Promise<Prepar
       not_evaluable: { day0: day0.not_evaluable, day1: day1.not_evaluable },
       needs_info: { day0: day0.needs_info, day1: day1.needs_info },
       total_disputable: { day0: day0.total_disputable, day1: day1.total_disputable },
+      invoices: { day0: invoiceAmounts(day0, byNumber), day1: invoiceAmounts(day1, byNumber) },
     },
     findings: [...rowsOf(day0, byNumber), ...rowsOf(day1, byNumber)],
   };
+}
+
+function invoiceAmounts(report: RunReport, byNumber: ReadonlyMap<string, string>): RulesInvoiceAmount[] {
+  const rows = report.invoices.map((invoice) => {
+    const invoiceId = byNumber.get(invoice.invoice_id);
+    if (invoiceId === undefined) throw new RulesInputError(`No invoice for ${invoice.invoice_id}.`);
+    return {
+      invoice_id: invoiceId,
+      disputable: invoice.disputable,
+      do_not_pursue: invoice.do_not_pursue,
+      superseded_by: invoice.superseded_by,
+    };
+  });
+  rows.sort((left, right) => left.invoice_id.localeCompare(right.invoice_id));
+  return rows;
 }
 
 function rowsOf(
