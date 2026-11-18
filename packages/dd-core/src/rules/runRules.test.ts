@@ -87,7 +87,22 @@ describe("runRules", () => {
     expect(Object.keys(parsed)).toEqual(["convention", "total_disputable", "findings", "not_evaluable", "needs_info", "invoices"]);
     const clean = parsed.invoices.find((invoice) => invoice.invoice_id === "SYN-1001");
     expect(clean).toBeDefined();
+    expect(Object.keys(clean ?? {})).toEqual(["invoice_id", "elements", "outcomes", "disputable", "currency", "do_not_pursue", "superseded_by"]);
     expect(Object.keys(clean?.elements ?? {})).toEqual([...ELEMENT_KEYS]);
+  });
+
+  it("stores each invoice's counted amount, and the included amounts sum to the total", () => {
+    const loaded = fixtureIds.map((id) => load(id));
+    const invoices = loaded.map((entry) => entry.invoice);
+    const parties = partyMap(invoices, "sample_line");
+    for (const convention of ["day0", "day1"] as const) {
+      const report = runRules(invoices, harbor(), convention, parties, []);
+      expect(invoiceOf(report, "SYN-1005")?.disputable).toBe("500.00");
+      expectCounted(report);
+      for (const entry of loaded) {
+        expectCounted(runRules([entry.invoice], harbor(), convention, partyMap([entry.invoice], "sample_line"), []));
+      }
+    }
   });
 
   it("finds the confirmed absences after review", () => {
@@ -133,6 +148,7 @@ describe("runRules", () => {
       { rule: "R5", ground: "duplicate_charge", disputable_amount: "600.00", currency: "USD" },
     ]);
     expect(report.total_disputable).toEqual([{ currency: "USD", amount: "1000.00" }]);
+    expect(invoiceOf(report, "SYN-9001")?.disputable).toBe("1000.00");
 
     const alone = runRules([later], harbor(), "day1", partyMap([later], "sample_line"), []);
     expect(amounts(alone, "SYN-9001").map((finding) => finding.disputable_amount)).toEqual(["900.00", "400.00"]);
@@ -247,6 +263,9 @@ describe("runRules", () => {
     expect(refused.every((finding) => finding.do_not_pursue)).toBe(true);
     expect(report.findings.filter((finding) => finding.invoice_id === "SYN-1005").every((finding) => finding.do_not_pursue)).toBe(false);
     expect(report.total_disputable).toEqual([{ currency: "USD", amount: "500.00" }]);
+    expect(invoiceOf(report, "SYN-1003")).toMatchObject({ disputable: "1100.00", currency: "USD", do_not_pursue: true, superseded_by: "" });
+    expect(invoiceOf(report, "SYN-1005")).toMatchObject({ disputable: "500.00", currency: "USD", do_not_pursue: false, superseded_by: "" });
+    expectCounted(report);
     expect(findingsCsv(report)).toContain("1100.00,USD,true,");
     expect(findingsCsv(report)).toContain("250.00,USD,false,");
   });
@@ -264,6 +283,9 @@ describe("runRules", () => {
     expect(reissued.map((finding) => finding.disputable_amount)).toEqual(["500.00"]);
     expect(reissued.every((finding) => finding.superseded_by === "")).toBe(true);
     expect(report.total_disputable).toEqual([{ currency: "USD", amount: "500.00" }]);
+    expect(invoiceOf(report, "SYN-1004")).toMatchObject({ disputable: "500.00", do_not_pursue: false, superseded_by: "SYN-2004" });
+    expect(invoiceOf(report, "SYN-2004")).toMatchObject({ disputable: "500.00", do_not_pursue: false, superseded_by: "" });
+    expectCounted(report);
     expect(findingsCsv(report)).toContain("500.00,USD,false,SYN-2004,");
     expect(findingsCsv(report)).toContain("500.00,USD,false,,");
   });
@@ -285,6 +307,9 @@ describe("runRules", () => {
       { invoice_id: "SYN-1005", amount: "250.00", superseded_by: "SYN-2005" },
     ]);
     expect(report.total_disputable).toEqual([{ currency: "USD", amount: "0.00" }]);
+    expect(invoiceOf(report, "SYN-1005")).toMatchObject({ disputable: "500.00", superseded_by: "SYN-2005" });
+    expect(invoiceOf(report, "SYN-2005")).toMatchObject({ disputable: "0.00", superseded_by: "" });
+    expectCounted(report);
   });
 });
 
@@ -323,6 +348,27 @@ describe("findings report", () => {
     expect(csv.includes(",=SUM(A1)")).toBe(false);
   });
 });
+
+function invoiceOf(report: RunReport, invoiceId: string): RunReport["invoices"][number] | undefined {
+  return report.invoices.find((invoice) => invoice.invoice_id === invoiceId);
+}
+
+/** Included per-invoice amounts, seeded from the total so an all-excluded currency stays 0.00. */
+function expectCounted(report: RunReport): void {
+  const cents = new Map<string, number>();
+  for (const total of report.total_disputable) cents.set(total.currency, 0);
+  for (const invoice of report.invoices) {
+    expect(invoice.disputable).toMatch(/^\d+\.\d{2}$/);
+    if (invoice.do_not_pursue || invoice.superseded_by !== "") continue;
+    const match = /^(\d+)\.(\d{2})$/.exec(invoice.disputable);
+    if (match === null) throw new Error(invoice.disputable);
+    cents.set(invoice.currency, (cents.get(invoice.currency) ?? 0) + Number(match[1]) * 100 + Number(match[2]));
+  }
+  const summed = [...cents.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([currency, value]) => ({ currency, amount: `${Math.trunc(value / 100)}.${String(value % 100).padStart(2, "0")}` }));
+  expect(summed).toEqual([...report.total_disputable].sort((left, right) => left.currency.localeCompare(right.currency)));
+}
 
 function amounts(report: RunReport, invoiceId: string): { rule: string; ground: string; disputable_amount: string; currency: string }[] {
   return report.findings

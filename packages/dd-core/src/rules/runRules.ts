@@ -67,6 +67,12 @@ export type ReportInvoice = {
   run_id?: string;
   elements: Record<ElementKey, ReportElement>;
   outcomes: RuleOutcome[];
+  /** `counted()` for this invoice, two decimals. Kept even when the total leaves it out. */
+  disputable: string;
+  currency: string;
+  do_not_pursue: boolean;
+  /** Reissue invoice number when this invoice was superseded. Empty otherwise. */
+  superseded_by: string;
 };
 
 export type NotEvaluable = {
@@ -120,18 +126,29 @@ export function runRules(
 
   const totals = new Map<string, Decimal>();
   for (const invoice of invoices) totals.set(invoice.currency, totals.get(invoice.currency) ?? zero);
-  for (const invoice of invoices) {
-    if (isRefused(invoice.invoice_number, parties, refused) || superseded.has(invoice.invoice_number)) continue;
+  const countedRows = invoices.map((invoice) => {
     const own = findings.filter((finding) => finding.invoice_id === invoice.invoice_number);
-    const current = totals.get(invoice.currency) ?? zero;
-    totals.set(invoice.currency, current.plus(counted(invoice, own)));
-  }
+    const amount = counted(invoice, own);
+    const doNotPursue = isRefused(invoice.invoice_number, parties, refused);
+    const supersededByInvoice = superseded.get(invoice.invoice_number) ?? "";
+    if (!doNotPursue && supersededByInvoice === "") {
+      const current = totals.get(invoice.currency) ?? zero;
+      totals.set(invoice.currency, current.plus(amount));
+    }
+    return {
+      disputable: amount.toFixed(2),
+      currency: invoice.currency,
+      do_not_pursue: doNotPursue,
+      superseded_by: supersededByInvoice,
+    };
+  });
 
   const notEvaluable: NotEvaluable[] = [];
   const needsInfo: NotEvaluable[] = [];
   const reportInvoices: ReportInvoice[] = invoices.map((invoice, index) => {
     const row = judged[index];
-    if (row === undefined) throw new Error("Every invoice is judged.");
+    const countedRow = countedRows[index];
+    if (row === undefined || countedRow === undefined) throw new Error("Every invoice is judged.");
     const outcomes = [...row.outcomes, r5Outcome(invoice.invoice_number, r5Findings, r5Blocked)];
     for (const outcome of outcomes) {
       if (outcome.outcome === "not_evaluable" || outcome.not_evaluable === true) {
@@ -139,7 +156,7 @@ export function runRules(
       }
       if (outcome.outcome === "needs_info") needsInfo.push({ invoice_id: invoice.invoice_number, rule: outcome.rule });
     }
-    return toReportInvoice(invoice, outcomes);
+    return toReportInvoice(invoice, outcomes, countedRow);
   });
 
   return present({
@@ -449,10 +466,21 @@ function toReportFinding(finding: Finding, doNotPursue: boolean, supersededByInv
   return report;
 }
 
-function toReportInvoice(invoice: RunInvoice, outcomes: RuleOutcome[]): ReportInvoice {
-  const elements = reportElements(invoice);
-  if (invoice.run_id === undefined) return { invoice_id: invoice.invoice_number, elements, outcomes };
-  return { invoice_id: invoice.invoice_number, run_id: invoice.run_id, elements, outcomes };
+function toReportInvoice(
+  invoice: RunInvoice,
+  outcomes: RuleOutcome[],
+  countedAmount: { disputable: string; currency: string; do_not_pursue: boolean; superseded_by: string },
+): ReportInvoice {
+  const shared = {
+    elements: reportElements(invoice),
+    outcomes,
+    disputable: countedAmount.disputable,
+    currency: countedAmount.currency,
+    do_not_pursue: countedAmount.do_not_pursue,
+    superseded_by: countedAmount.superseded_by,
+  };
+  if (invoice.run_id === undefined) return { invoice_id: invoice.invoice_number, ...shared };
+  return { invoice_id: invoice.invoice_number, run_id: invoice.run_id, ...shared };
 }
 
 function reportElements(invoice: RunInvoice): Record<ElementKey, ReportElement> {

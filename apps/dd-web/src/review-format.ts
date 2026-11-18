@@ -20,7 +20,7 @@ export function sumAmounts(amounts: readonly string[]): string | null {
   return fromCents(cents);
 }
 
-/** Billed minus one stored disputable amount. Display only; this is not the rules total. */
+/** Billed minus the stored per-invoice counted amount. */
 export function minusAmount(billed: string, disputable: string): string | null {
   const left = centsOf(billed);
   const right = centsOf(disputable);

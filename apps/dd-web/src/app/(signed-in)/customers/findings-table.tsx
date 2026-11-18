@@ -27,7 +27,7 @@ export function FindingsTable({ customerId, board }: { customerId: string; board
     clear: narrowed.filter((row) => slice(row, convention).checks.length === 0).length,
     review: narrowed.filter((row) => slice(row, convention).needsInfo).length,
     manual: narrowed.filter((row) => slice(row, convention).manual).length,
-    refused: narrowed.filter((row) => row.refused).length,
+    refused: narrowed.filter((row) => isRefused(row, convention)).length,
   };
   const visible = narrowed.filter((row) => inTab(row, tab, convention)).slice().sort((left, right) => compareRows(left, right, sort, convention));
   const total = convention === "day0" ? board.day0Total : board.day1Total;
@@ -185,9 +185,6 @@ export function FindingsTable({ customerId, board }: { customerId: string; board
             ))}
           </tbody>
         </table>
-        <div className="foot">
-          Each dollar counted once is stored for the customer. An invoice with more than one finding lists each stored amount.
-        </div>
       </div>
     </>
   );
@@ -196,9 +193,9 @@ export function FindingsTable({ customerId, board }: { customerId: string; board
 function FindingRow({ customerId, row, convention }: { customerId: string; row: FindingsTableRow; convention: "day0" | "day1" }) {
   const view = slice(row, convention);
   const other = slice(row, convention === "day0" ? "day1" : "day0");
-  const warn = amountsDiffer(view.amounts, other.amounts);
-  const single = view.amounts.length === 1 ? view.amounts[0] : undefined;
-  const correct = single !== undefined && row.billed !== null ? minusAmount(row.billed, single) : null;
+  const warn = disputeDiffers(view, other);
+  const shown = disputeOf(view);
+  const correct = shown !== null && row.billed !== null ? minusAmount(row.billed, shown) : null;
   const href = view.findingId === null ? `/review/${row.invoiceId}` : `/customers/${customerId}/findings/${view.findingId}`;
   const sub = [row.carrier, row.container, row.pages > 1 ? `${row.pages} pages` : null].filter((part) => part !== null && part !== "").join(" · ");
   return (
@@ -235,12 +232,21 @@ function FindingRow({ customerId, row, convention }: { customerId: string; row: 
         )}
       </td>
       <td className="r">
-        {view.amounts.length === 0 ? <span className="none">—</span> : null}
-        {view.amounts.map((amount, index) => (
-          <span key={`${amount}-${index}`} className={warn ? "pill warn" : "pill"}>
-            {formatAmount(amount)}
-          </span>
-        ))}
+        {view.recorded ? (
+          shown !== null ? (
+            <span className={warn ? "pill warn" : "pill"}>{formatAmount(shown)}</span>
+          ) : (
+            <span className="none">—</span>
+          )
+        ) : view.amounts.length === 0 ? (
+          <span className="none">—</span>
+        ) : (
+          view.amounts.map((amount, index) => (
+            <span key={`${amount}-${index}`} className={warn ? "pill warn" : "pill"}>
+              {formatAmount(amount)}
+            </span>
+          ))
+        )}
       </td>
       <td className="r">{row.invoiceDate ?? "—"}</td>
       <td className={view.daysWarn ? "r days-warn" : "r"}>{row.days ?? "—"}</td>
@@ -294,6 +300,13 @@ function dayNote(
 function largestFinding(rows: readonly FindingsTableRow[], convention: "day0" | "day1"): { number: string; label: string; amount: string } | null {
   const ranked = rows.flatMap((row) => {
     const view = slice(row, convention);
+    if (view.recorded && (view.doNotPursue || view.supersededBy !== "")) return [];
+    const stored = view.recorded ? view.disputable : null;
+    if (stored !== null) {
+      const cents = centsOf(stored);
+      if (cents === null || cents <= 0) return [];
+      return [{ number: row.number, label: view.checks[0]?.label.split(" · ")[0] ?? "Finding", amount: stored, cents }];
+    }
     return view.amounts.flatMap((amount, index) => {
       const cents = centsOf(amount);
       if (cents === null) return [];
@@ -306,7 +319,8 @@ function largestFinding(rows: readonly FindingsTableRow[], convention: "day0" | 
 }
 
 function statusOf(row: FindingsTableRow, view: ReturnType<typeof slice>, warn: boolean): string {
-  if (row.refused) return "Do not pursue";
+  if (view.recorded ? view.doNotPursue : row.refused) return "Do not pursue";
+  if (view.supersededBy !== "") return `Superseded by ${view.supersededBy}`;
   if (view.manual) return "Needs manual entry";
   if (view.needsInfo && view.checks.length === 0) return "Needs review";
   if (warn && view.checks.length > 0) return "Changes with day count";
@@ -320,7 +334,7 @@ function inTab(row: FindingsTableRow, tab: Tab, convention: "day0" | "day1"): bo
   if (tab === "clear") return view.checks.length === 0;
   if (tab === "review") return view.needsInfo;
   if (tab === "manual") return view.manual;
-  if (tab === "refused") return row.refused;
+  if (tab === "refused") return isRefused(row, convention);
   return true;
 }
 
@@ -337,7 +351,28 @@ function compareRows(left: FindingsTableRow, right: FindingsTableRow, sort: Sort
   if (sort === "number") return left.number.localeCompare(right.number);
   if (sort === "date") return (left.invoiceDate ?? "").localeCompare(right.invoiceDate ?? "");
   if (sort === "days") return (right.days ?? -1) - (left.days ?? -1);
-  return maxCents(slice(right, convention).amounts) - maxCents(slice(left, convention).amounts) || left.number.localeCompare(right.number);
+  return disputeCents(slice(right, convention)) - disputeCents(slice(left, convention)) || left.number.localeCompare(right.number);
+}
+
+function disputeOf(view: ReturnType<typeof slice>): string | null {
+  if (view.recorded && view.disputable !== null && view.disputable !== "0.00") return view.disputable;
+  if (view.recorded) return null;
+  return view.amounts.length === 1 ? (view.amounts[0] ?? null) : null;
+}
+
+function disputeDiffers(view: ReturnType<typeof slice>, other: ReturnType<typeof slice>): boolean {
+  if (view.recorded && other.recorded && view.disputable !== null && other.disputable !== null) return view.disputable !== other.disputable;
+  return amountsDiffer(view.amounts, other.amounts);
+}
+
+function disputeCents(view: ReturnType<typeof slice>): number {
+  if (view.recorded && view.disputable !== null) return centsOf(view.disputable) ?? -1;
+  return maxCents(view.amounts);
+}
+
+function isRefused(row: FindingsTableRow, convention: "day0" | "day1"): boolean {
+  const view = slice(row, convention);
+  return view.recorded ? view.doNotPursue : row.refused;
 }
 
 function slice(row: FindingsTableRow, convention: "day0" | "day1") {
