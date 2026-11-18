@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Demurrage and Detention Audit — Harbor Home Goods</title>
+<style>
+@page { size: Letter; margin: 0.8in 0.85in 0.85in; }
+:root{--ink:#1A1A17;--mute:#66655E;--dim:#A09F97;--line:#E1DFD7;--line2:#ECEAE4;--panel:#F7F6F2;--accent:#E8A87C;--good:#E1F1E8;--goodInk:#1D5A3E;--warn:#FBEBD3;--warnInk:#8A4B00}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, "Helvetica Neue", Arial, sans-serif; color: var(--ink); font-size: 9.6pt; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.mono { font-family: "DejaVu Sans Mono", ui-monospace, monospace; }
+.label { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+.page { page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+p { margin: 0 0 9pt; }
+.muted { color: var(--mute); }
+h1 { font-size: 21pt; font-weight: 600; letter-spacing: -.015em; margin: 4pt 0 3pt; line-height: 1.15; }
+h2 { font-size: 11.5pt; font-weight: 600; margin: 0 0 6pt; }
+h3 { font-size: 10pt; font-weight: 600; margin: 0; }
+
+/* letterhead + running head */
+.lh { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 10pt; border-bottom: 1.5pt solid var(--accent); margin-bottom: 30pt; }
+.firm { font-weight: 700; font-size: 12pt; letter-spacing: .02em; }
+.firm small { display: block; font-weight: 400; font-size: 7.5pt; color: var(--mute); letter-spacing: 0; margin-top: 2pt; }
+.lh .meta { text-align: right; font-size: 7.5pt; color: var(--mute); line-height: 1.6; }
+.rh { display: flex; justify-content: space-between; align-items: center; padding-bottom: 7pt; border-bottom: .75pt solid var(--line); margin-bottom: 14pt; }
+.rh .firm { font-size: 9pt; }
+.rh .meta { font-size: 7.5pt; color: var(--mute); }
+
+/* letter */
+.letter p { font-size: 10pt; line-height: 1.6; margin-bottom: 11pt; }
+.re { font-weight: 600; margin: 20pt 0 14pt !important; }
+.callout { display: flex; gap: 0; border: .75pt solid var(--line); border-radius: 6pt; margin: 4pt 0 16pt; }
+.callout > div { flex: 1; padding: 10pt 12pt; border-right: .75pt solid var(--line); }
+.callout > div:last-child { border-right: 0; }
+.callout .v { font-size: 15pt; font-weight: 600; margin-top: 4pt; letter-spacing: -.01em; }
+.callout .v small { font-size: 8pt; color: var(--mute); font-weight: 400; margin-left: 2pt; }
+.sig { margin-top: 24pt; }
+
+/* stat strip */
+.stats { display: grid; grid-template-columns: 1.4fr .8fr .8fr 1.2fr; border-top: .75pt solid var(--line); border-bottom: .75pt solid var(--line); margin: 12pt 0 14pt; }
+.stats > div { padding: 9pt 12pt 9pt 0; }
+.stats > div + div { padding-left: 12pt; border-left: .75pt solid var(--line); }
+.stats .v { font-size: 19pt; font-weight: 500; letter-spacing: -.02em; margin: 5pt 0 2pt; }
+.stats .v small { font-size: 9pt; color: var(--mute); margin-left: 3pt; }
+.stats .v.id { font-family: "DejaVu Sans Mono", monospace; font-size: 12pt; margin: 11pt 0 7pt; white-space: nowrap; }
+.stats .s { font-size: 7.5pt; color: var(--mute); }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-family: "DejaVu Sans Mono", monospace; font-size: 6.8pt; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); font-weight: 400; padding: 6pt 8pt 6pt 0; border-bottom: .75pt solid var(--ink); background: transparent; }
+td { padding: 5pt 8pt 5pt 0; border-bottom: .5pt solid var(--line2); vertical-align: middle; }
+.r { text-align: right; padding-right: 0; white-space: nowrap; }
+td.r + td, th.r + th { padding-left: 14pt; }
+.strike { color: var(--dim); text-decoration: line-through; font-size: 8pt; display: block; }
+.pill { display: inline-block; padding: 2.5pt 7pt; border-radius: 4pt; background: var(--good); color: var(--goodInk); font-weight: 600; font-size: 8.6pt; }
+.pill.warn { background: var(--warn); color: var(--warnInk); }
+.tag { font-family: "DejaVu Sans Mono", monospace; font-size: 6.8pt; letter-spacing: .06em; text-transform: uppercase; padding: 1.5pt 5pt; border-radius: 3pt; background: var(--panel); color: var(--mute); border: .5pt solid var(--line); }
+.sub { font-size: 7.6pt; color: var(--mute); }
+tr.total td { border-top: .75pt solid var(--ink); border-bottom: 0; font-weight: 600; padding-top: 8pt; }
+
+ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+ol.steps li { counter-increment: s; display: flex; gap: 10pt; padding: 3pt 0; border-bottom: .5pt solid var(--line2); }
+ol.steps li::before { content: counter(s); font-family: "DejaVu Sans Mono", monospace; font-size: 7.5pt; width: 16pt; height: 16pt; border-radius: 50%; border: .75pt solid var(--line); display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--mute); }
+
+/* findings */
+.f { border: .75pt solid var(--line); border-radius: 6pt; margin-bottom: 9pt; break-inside: avoid; overflow: hidden; }
+.fh { display: flex; align-items: center; gap: 10pt; padding: 9pt 12pt; background: var(--panel); border-bottom: .75pt solid var(--line); }
+.fh .no { font-family: "DejaVu Sans Mono", monospace; font-size: 7.5pt; color: var(--mute); }
+.fh .inv { font-family: "DejaVu Sans Mono", monospace; font-size: 8.5pt; }
+.fh .amt { margin-left: auto; }
+.fb { display: grid; grid-template-columns: 1fr 1.05fr; gap: 14pt; padding: 9pt 12pt 9pt; font-size: 8.8pt; }
+.fb p { margin: 0 0 8pt; }
+.money { display: grid; grid-template-columns: repeat(3, 1fr); border: .5pt solid var(--line); border-radius: 4pt; margin-bottom: 8pt; }
+.money > div { padding: 5pt 7pt; }
+.money > div + div { border-left: .5pt solid var(--line); }
+.money .label { font-size: 6pt; letter-spacing: .06em; white-space: nowrap; }
+.money .v { font-size: 10pt; font-weight: 600; margin-top: 2pt; }
+.money .v.x { color: var(--dim); text-decoration: line-through; font-weight: 400; }
+.calc { width: 100%; font-size: 8pt; }
+.calc td { border: 0; padding: 1.2pt 0; }
+.calc tr.rr td { border-top: .75pt solid var(--ink); padding-top: 5pt; font-weight: 600; }
+.ref { font-size: 7.6pt; color: var(--mute); margin-top: 6pt; }
+sup { font-size: 6pt; color: var(--mute); }
+.notes { font-size: 7pt; color: var(--mute); border-top: .5pt solid var(--line); padding-top: 6pt; margin-top: 6pt; line-height: 1.6; }
+
+/* exhibits */
+.ex { margin-bottom: 14pt; break-inside: avoid; border: .75pt solid var(--line); border-radius: 6pt; overflow: hidden; }
+.ex .eh { display: flex; gap: 10pt; align-items: baseline; padding: 8pt 12pt; background: var(--panel); border-bottom: .75pt solid var(--line); }
+.ex .eh .cap { font-size: 8pt; color: var(--mute); }
+.ex .body { padding: 10pt 12pt; }
+.ex img { width: 74%; display: block; }
+.ex img + img { margin-top: 6pt; }
+.note { border-left: 2pt solid var(--accent); background: #FDF7F1; padding: 9pt 12pt; margin: 10pt 0 14pt; font-size: 8.8pt; }
+</style>
+</head>
+<body>
+
+<!-- LETTER -->
+<section class="page letter">
+  <div class="lh">
+    <div class="firm">TIDEMARK RECOVERY<small>Demurrage and detention audit and recovery</small></div>
+    <div class="meta">New Haven, CT<br>disputes@tidemark.example</div>
+  </div>
+  <p>November 18, 2026</p>
+  <p>Harbor Home Goods<br>Attention: Accounts Payable</p>
+  <p class="re">Re: Demurrage and detention audit · report <span class="mono">TMR-2026-001</span></p>
+
+  <p>We have reviewed the eight demurrage invoices you sent from Sample Line Logistics, dated January 20 to June 20, 2026. Five contain charges that can be disputed under the Federal Maritime Commission's billing rules or the carrier's own schedule.</p>
+  <div class="callout">
+    <div><div class="label">In dispute</div><div class="v">3,000.00<small>USD</small></div></div>
+    <div><div class="label">Invoices with findings</div><div class="v">5 <small>of 8</small></div></div>
+    <div><div class="label">Our fee</div><div class="v">25%<small>of recovered</small></div></div>
+  </div>
+  <p>The largest item is an invoice issued 37 days after the charges ended, beyond the 30 days the rules allow. Each finding is set out in the enclosed report with the calculation and a copy of the relevant part of the invoice.</p>
+  <p>With your approval, we will submit these disputes to Sample Line Logistics on your behalf and handle the correspondence. If nothing is recovered, there is no fee. To proceed, please reply to this letter confirming your approval.</p>
+  <div class="sig">
+    <p style="margin-bottom:28pt">Sincerely,</p>
+    <p style="margin:0;font-weight:600">Ibrahim Kebbeh</p>
+    <p class="muted" style="margin:0">Principal, Tidemark Recovery</p>
+  </div>
+  <p class="muted" style="margin-top:28pt;font-size:8pt">Enclosure: Demurrage and Detention Audit, report TMR-2026-001</p>
+</section>
+
+<!-- SUMMARY -->
+<section class="page">
+  <div class="rh"><div class="firm">TIDEMARK RECOVERY</div><div class="meta">Harbor Home Goods · <span class="mono">TMR-2026-001</span></div></div>
+  <div class="label">Demurrage and detention audit</div>
+  <h1>Harbor Home Goods</h1>
+  <div class="muted">Invoices from Sample Line Logistics dated January 20 to June 20, 2026 · issued November 18, 2026</div>
+
+  <div class="stats">
+    <div><div class="label">In dispute</div><div class="v">3,000.00<small>USD</small></div><div class="s">Day 1 count · day 0 gives 3,250.00</div></div>
+    <div><div class="label">Invoices</div><div class="v">8</div><div class="s">10,800.00 billed</div></div>
+    <div><div class="label">With findings</div><div class="v">5</div><div class="s">6 findings</div></div>
+    <div><div class="label">Largest</div><div class="v id">SYN-1003</div><div class="s">Late invoice · 1,100.00</div></div>
+  </div>
+
+  <h2>Findings by invoice</h2>
+  <table>
+    <tr><th>Invoice</th><th>Finding</th><th class="r">Billed → correct</th><th class="r">In dispute</th></tr>
+    <tr><td class="mono">SYN-1003</td><td>Invoice issued after the 30-day limit<div class="sub">Issued 37 days after charges ended</div></td><td class="r"><span class="strike">1,100.00</span>0.00</td><td class="r"><span class="pill">1,100.00</span></td></tr>
+    <tr><td class="mono">SYN-1007</td><td>Days already billed on SYN-1006<div class="sub">March 8 to 10, container SLLU0000069</div></td><td class="r"><span class="strike">1,000.00</span>400.00</td><td class="r"><span class="pill">600.00</span></td></tr>
+    <tr><td class="mono">SYN-1004</td><td>Charges during free time<div class="sub">Charged from Feb 13; free time ends Feb 14</div></td><td class="r"><span class="strike">1,600.00</span>1,100.00</td><td class="r"><span class="pill warn">500.00</span></td></tr>
+    <tr><td class="mono">SYN-1005</td><td>Arithmetic errors · 2<div class="sub">A line and the total do not add up</div></td><td class="r"><span class="strike">3,450.00</span>2,950.00</td><td class="r"><span class="pill">500.00</span></td></tr>
+    <tr><td class="mono">SYN-1002</td><td>Required information missing · 4<div class="sub">No free-time dates, no certifications</div></td><td class="r"><span class="strike">300.00</span>0.00</td><td class="r"><span class="pill">300.00</span></td></tr>
+    <tr class="total"><td></td><td>Total</td><td class="r">7,450.00 → 4,450.00</td><td class="r">3,000.00</td></tr>
+  </table>
+  <p class="sub" style="margin-top:6pt">Amber: the amount depends on how free-time days are counted (page 7). Each dollar is counted once.</p>
+
+  <h2 style="margin-top:12pt">Next steps</h2>
+  <ol class="steps">
+    <li>You confirm by email that we may dispute these charges with Sample Line Logistics.</li>
+    <li>We send each dispute to the carrier's dispute contact with the invoice pages attached. The carrier has 30 days to respond.</li>
+    <li>We report each outcome. Our 25% fee applies only to amounts refunded or credited.</li>
+  </ol>
+</section>
+
+<!-- FINDINGS 1-3 -->
+<section class="page">
+  <div class="rh"><div class="firm">TIDEMARK RECOVERY</div><div class="meta">Harbor Home Goods · <span class="mono">TMR-2026-001</span></div></div>
+  <h2>Findings in detail</h2>
+
+  <div class="f"><div class="fh"><span class="no">01</span><span class="inv">SYN-1003</span><h3>Invoice issued after the 30-day limit</h3><span class="amt pill">1,100.00</span></div>
+    <div class="fb"><div><p>A carrier must issue a demurrage invoice within 30 days of the last day charged.<sup>1</sup> These charges ended March 2, 2026; the invoice is dated April 8, 2026, 37 days later. The full amount is disputed.</p><div class="ref">Exhibit B</div></div>
+    <div><div class="money"><div><div class="label">Billed</div><div class="v x">1,100.00</div></div><div><div class="label">Correct</div><div class="v">0.00</div></div><div><div class="label">In dispute</div><div class="v">1,100.00</div></div></div>
+    <table class="calc"><tr><td>Last day charged</td><td class="r">2026-03-02</td></tr><tr><td>Invoice date</td><td class="r">2026-04-08</td></tr><tr class="rr"><td>Days between</td><td class="r">37 · limit 30</td></tr></table></div></div></div>
+
+  <div class="f"><div class="fh"><span class="no">02</span><span class="inv">SYN-1007</span><h3>Days already billed on an earlier invoice</h3><span class="amt pill">600.00</span></div>
+    <div class="fb"><div><p>SYN-1006 charged container SLLU0000069 for March 1 to 10, 2026. SYN-1007 charges it again for March 8 to 12. The three days from March 8 to 10 are billed twice.<sup>2</sup></p><div class="ref">Exhibit E</div></div>
+    <div><div class="money"><div><div class="label">Billed</div><div class="v x">1,000.00</div></div><div><div class="label">Correct</div><div class="v">400.00</div></div><div><div class="label">In dispute</div><div class="v">600.00</div></div></div>
+    <table class="calc"><tr><td>Days billed twice</td><td class="r">Mar 8–10 · 3</td></tr><tr><td>Daily rate</td><td class="r">200.00</td></tr><tr class="rr"><td>Overcharge</td><td class="r">600.00</td></tr></table></div></div></div>
+
+  <div class="f"><div class="fh"><span class="no">03</span><span class="inv">SYN-1004</span><h3>Charges during free time</h3><span class="amt pill warn">500.00</span></div>
+    <div class="fb"><div><p>The invoice states free time ending February 14, 2026, yet charges begin February 13. Only February 15 to 20 are chargeable, at 150.00 for the first four days and 250.00 after.<sup>2</sup></p><div class="ref">Exhibit C · day count on page 7</div></div>
+    <div><div class="money"><div><div class="label">Billed</div><div class="v x">1,600.00</div></div><div><div class="label">Correct</div><div class="v">1,100.00</div></div><div><div class="label">In dispute</div><div class="v">500.00</div></div></div>
+    <table class="calc"><tr><td>Billed Feb 13–20 · 8 days</td><td class="r">1,600.00</td></tr><tr><td>Correct Feb 15–20 · 4 × 150 + 2 × 250</td><td class="r">1,100.00</td></tr><tr class="rr"><td>Overcharge</td><td class="r">500.00</td></tr></table></div></div></div>
+
+  <div class="notes">1. 46 CFR 541.7(a). &nbsp; 2. Sample Line Logistics demurrage schedule SL-1, as cited on the invoice.</div>
+</section>
+
+<!-- FINDINGS 4-5 -->
+<section class="page">
+  <div class="rh"><div class="firm">TIDEMARK RECOVERY</div><div class="meta">Harbor Home Goods · <span class="mono">TMR-2026-001</span></div></div>
+
+  <div class="f"><div class="fh"><span class="no">04</span><span class="inv">SYN-1005</span><h3>Arithmetic errors on a line and the total</h3><span class="amt pill">500.00</span></div>
+    <div class="fb"><div><p>Line 1 bills 6 days at 250.00 as 1,750.00; six days at that rate is 1,500.00. Separately, the total of 3,450.00 exceeds the sum of the invoice's own lines.<sup>2</sup></p><div class="ref">Exhibit D</div></div>
+    <div><div class="money"><div><div class="label">Billed</div><div class="v x">3,450.00</div></div><div><div class="label">Correct</div><div class="v">2,950.00</div></div><div><div class="label">In dispute</div><div class="v">500.00</div></div></div>
+    <table class="calc"><tr><td>Line 1 corrected · 6 × 250.00</td><td class="r">1,500.00</td></tr><tr><td>Line 2 · 10 × 145.00</td><td class="r">1,450.00</td></tr><tr class="rr"><td>Correct total</td><td class="r">2,950.00</td></tr></table></div></div></div>
+
+  <div class="f"><div class="fh"><span class="no">05</span><span class="inv">SYN-1002</span><h3>Required information missing</h3><span class="amt pill">300.00</span></div>
+    <div class="fb"><div><p>Federal rules list what every demurrage invoice must contain.<sup>3</sup> This one omits the start and end dates of free time and both required certifications. An invoice missing required information does not obligate the billed party to pay.<sup>4</sup></p><div class="ref">Exhibit A</div></div>
+    <div><div class="money"><div><div class="label">Billed</div><div class="v x">300.00</div></div><div><div class="label">Correct</div><div class="v">0.00</div></div><div><div class="label">In dispute</div><div class="v">300.00</div></div></div>
+    <table class="calc"><tr><td>Free time start date</td><td class="r"><span class="tag">Not shown</span></td></tr><tr><td>Free time end date</td><td class="r"><span class="tag">Not shown</span></td></tr><tr><td>Certification of compliance</td><td class="r"><span class="tag">Not shown</span></td></tr><tr><td>Certification of no contribution</td><td class="r"><span class="tag">Not shown</span></td></tr></table></div></div></div>
+
+  <div class="notes">2. Sample Line Logistics demurrage schedule SL-1. &nbsp; 3. 46 CFR 541.6(b)(4), (b)(5), (e)(1), (e)(2). &nbsp; 4. 46 CFR 541.5.</div>
+</section>
+
+<!-- EXHIBITS -->
+<section class="page">
+  <div class="rh"><div class="firm">TIDEMARK RECOVERY</div><div class="meta">Harbor Home Goods · <span class="mono">TMR-2026-001</span></div></div>
+  <h2>Exhibits</h2>
+  <p class="sub" style="margin-bottom:12pt">Each exhibit is part of the invoice as received. Outlines mark the items discussed.</p>
+  <div class="ex"><div class="eh"><span class="label">Exhibit A</span><span class="mono" style="font-size:8pt">SYN-1002 · p.1</span><span class="cap">Free time is stated, but no start or end date appears; neither certification appears.</span></div><div class="body"><img src="ex1.png"></div></div>
+  <div class="ex"><div class="eh"><span class="label">Exhibit B</span><span class="mono" style="font-size:8pt">SYN-1003 · p.1</span><span class="cap">Dated April 8 for charges ending March 2.</span></div><div class="body"><img src="ex2.png"></div></div>
+</section>
+
+<section class="page">
+  <div class="rh"><div class="firm">TIDEMARK RECOVERY</div><div class="meta">Harbor Home Goods · <span class="mono">TMR-2026-001</span></div></div>
+  <div class="ex"><div class="eh"><span class="label">Exhibit C</span><span class="mono" style="font-size:8pt">SYN-1004 · p.1</span><span class="cap">Free time ends February 14; charges begin February 13.</span></div><div class="body"><img src="ex3.png"></div></div>
+  <div class="ex"><div class="eh"><span class="label">Exhibit D</span><span class="mono" style="font-size:8pt">SYN-1005 · p.1</span><span class="cap">6 days at 250.00 billed as 1,750.00; total exceeds the lines.</span></div><div class="body"><img src="ex4.png"></div></div>
+  <div class="ex"><div class="eh"><span class="label">Exhibit E</span><span class="mono" style="font-size:8pt">SYN-1006 / SYN-1007</span><span class="cap">The same container billed Mar 1–10 (top) and Mar 8–12 (bottom).</span></div><div class="body"><img src="ex5a.png"><img src="ex5b.png"></div></div>
+</section>
+
+<!-- SCOPE -->
+<section class="page">
+  <div class="rh"><div class="firm">TIDEMARK RECOVERY</div><div class="meta">Harbor Home Goods · <span class="mono">TMR-2026-001</span></div></div>
+  <h2>Scope, method and limitations</h2>
+  <table style="margin-bottom:14pt">
+    <tr><th>Invoice</th><th>Date</th><th class="r">Billed</th><th>Result</th></tr>
+    <tr><td class="mono">SYN-1001</td><td>2026-01-20</td><td class="r">450.00</td><td><span class="tag">No findings</span></td></tr>
+    <tr><td class="mono">SYN-1002</td><td>2026-06-20</td><td class="r">300.00</td><td>Finding 05</td></tr>
+    <tr><td class="mono">SYN-1003</td><td>2026-04-08</td><td class="r">1,100.00</td><td>Finding 01</td></tr>
+    <tr><td class="mono">SYN-1004</td><td>2026-02-25</td><td class="r">1,600.00</td><td>Finding 03</td></tr>
+    <tr><td class="mono">SYN-1005</td><td>2026-04-25</td><td class="r">3,450.00</td><td>Finding 04</td></tr>
+    <tr><td class="mono">SYN-1006</td><td>2026-03-15</td><td class="r">2,000.00</td><td><span class="tag">No findings</span></td></tr>
+    <tr><td class="mono">SYN-1007</td><td>2026-03-20</td><td class="r">1,000.00</td><td>Finding 02</td></tr>
+    <tr><td class="mono">SYN-1008</td><td>2026-05-22</td><td class="r">900.00</td><td><span class="tag">No findings</span></td></tr>
+  </table>
+  <div class="note"><b>How free-time days are counted.</b> The rules do not settle whether the day a container becomes available counts as the first free day. This report counts it, which gives the lower amount. Otherwise finding 03 is 750.00 and the total 3,250.00.</div>
+  <h3>Method</h3>
+  <p>Each invoice was checked for the information the federal billing rules require, invoice timing, charges during free time, arithmetic, and days billed twice. Every value used was read from the invoice and confirmed by a reviewer against the page before any check ran.</p>
+  <h3>Limitations</h3>
+  <p>These amounts are claims. The carrier may accept, reduce or reject them, and the amount recovered may differ. This report is not legal advice.</p>
+</section>
+</body></html>
