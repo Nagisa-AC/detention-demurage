@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { signOut } from "./app/(signed-in)/sign-out";
 import type { Session } from "./session";
+import type { ThemeName } from "./theme";
+import { ThemeToggle } from "./theme-toggle";
 
 export type ShellTab = "customers" | "review" | "cases";
 
@@ -11,34 +13,43 @@ const TABS: { id: ShellTab; href: string; label: string }[] = [
 ];
 
 /** Header and page frame. The caller has already called requireSession. */
-export function Shell({ session, active, children }: { session: Session; active: ShellTab; children?: ReactNode }) {
+export function Shell({
+  session,
+  active,
+  theme,
+  waiting,
+  children,
+}: {
+  session: Session;
+  active: ShellTab;
+  theme: ThemeName;
+  waiting: number | null;
+  children?: ReactNode;
+}) {
   return (
     <div className="shell">
-      <header className="topbar">
-        <div className="wordmark">D&D Recovery</div>
-        <nav className="nav" aria-label="Main">
-          {TABS.map((tab) =>
-            tab.id === active ? (
-              <a key={tab.id} href={tab.href} aria-current="page">
-                {tab.label}
-              </a>
-            ) : (
-              <a key={tab.id} href={tab.href}>
-                {tab.label}
-              </a>
-            ),
-          )}
+      <header>
+        <div className="logo">D&D Recovery</div>
+        <nav aria-label="Main">
+          {TABS.map((tab) => (
+            <a key={tab.id} href={tab.href} aria-current={tab.id === active ? "page" : undefined}>
+              {tab.label}
+              {tab.id === "review" && waiting !== null ? <span className="count">{waiting}</span> : null}
+            </a>
+          ))}
         </nav>
-        <div className="account">
+        <div className="user">
+          <ThemeToggle theme={theme} />
           <span>
             {session.name} · MFA on
           </span>
+          <span aria-hidden="true">·</span>
           <form action={signOut}>
             <button type="submit">Sign out</button>
           </form>
         </div>
       </header>
-      <main className="frame">{children}</main>
+      {children}
     </div>
   );
 }

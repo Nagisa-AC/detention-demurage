@@ -21,7 +21,7 @@ import { assembleRead } from "../../dd-worker/src/read";
 import { pagesFromFixture, textOf } from "../../dd-worker/src/synthetic-pages";
 import type { ReviewSql } from "./review-data";
 import { buildRunInvoice } from "./rules-input";
-import { formatDisputable, runCustomerChecks, type RulesFailure, type RulesSummary } from "./rules-run";
+import { formatChecksLine, formatDisputable, runCustomerChecks, type RulesFailure, type RulesSummary } from "./rules-run";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const fixtureIds = ["clean", "missing_elements", "late_37", "free_time_overbill", "arithmetic", "duplicate_a", "duplicate_b", "split_row"] as const;
@@ -85,6 +85,26 @@ describe("rules run", () => {
   it("formats the two disputable totals", () => {
     expect(formatDisputable([])).toBe("none");
     expect(formatDisputable([{ currency: "USD", amount: "300.00" }])).toBe("300.00 USD");
+    expect(
+      formatChecksLine({
+        status: "ok",
+        ranAt: "2026-11-18T17:00:00.000Z",
+        day0Findings: 1,
+        day1Findings: 1,
+        day0: "300.00 USD",
+        day1: "300.00 USD",
+      }),
+    ).toBe("1 finding · day 1 300.00 USD");
+    expect(
+      formatChecksLine({
+        status: "ok",
+        ranAt: "2026-11-18T17:00:00.000Z",
+        day0Findings: 2,
+        day1Findings: 1,
+        day0: "3,250.00 USD",
+        day1: "3,000.00 USD",
+      }),
+    ).toBe("day 1 1 finding · 3,000.00 USD · day 0 2 findings · 3,250.00 USD");
   });
 });
 

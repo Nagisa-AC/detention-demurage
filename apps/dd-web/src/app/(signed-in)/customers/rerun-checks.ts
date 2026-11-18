@@ -13,4 +13,5 @@ export async function rerunChecks(formData: FormData): Promise<void> {
   if (typeof customerId !== "string" || !UUID.test(customerId)) return;
   await withReviewDb((sql) => runCustomerChecks(sql, customerId));
   revalidatePath("/customers");
+  revalidatePath(`/customers/${customerId}`);
 }

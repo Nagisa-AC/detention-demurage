@@ -115,7 +115,7 @@ export function UploadForm({ customers }: { customers: Customer[] }) {
         PDF
         <input name="pdf" type="file" accept="application/pdf,.pdf" />
       </label>
-      <button type="submit" disabled={busy}>
+      <button type="submit" className="btn primary" disabled={busy}>
         Upload
       </button>
       <p role="status">{message}</p>

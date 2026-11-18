@@ -9,13 +9,16 @@ export type SettingsFormState = { message: string; problems: SettingsProblem[] }
 export async function saveSettings(_previous: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
   const session = await requireSession({ path: "/customers" });
   try {
+    const customerId = field(formData, "customerId");
     const result = await saveCustomerSettings({
-      customerId: field(formData, "customerId"),
+      customerId,
       yaml: field(formData, "yaml"),
       actor: session.name,
     });
     if (result.ok) {
       revalidatePath("/customers");
+      revalidatePath(`/customers/${customerId}`);
+      revalidatePath(`/customers/${customerId}/settings`);
       return { message: `Settings saved as version ${result.version}.`, problems: [] };
     }
     return { message: "", problems: result.problems };
