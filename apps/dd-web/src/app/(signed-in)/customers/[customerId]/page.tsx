@@ -42,16 +42,16 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
         <h1>{customer.displayName}</h1>
         <div className="meta">{meta.length === 0 ? customer.configId : meta.join(" · ")}</div>
         <div className="actions">
-          <ExportButton customerId={customer.id} phase={exported.phase} reason={exported.reason} latest={exported.latest} />
+          <RerunForm customerId={customer.id} />
           <a className="btn" href={`/customers/${customer.id}/settings`}>
             Settings
           </a>
+          <ExportButton customerId={customer.id} phase={exported.phase} reason={exported.reason} latest={exported.latest} />
         </div>
       </div>
       {checks?.status === "failed" ? (
         <div className="banner" role="status">
           <span>Checks failed — run again. {checks.message}</span>
-          <RerunForm customerId={customer.id} />
         </div>
       ) : null}
       {board === null ? <p className="empty">No invoices yet.</p> : <FindingsTable customerId={customer.id} board={board} />}

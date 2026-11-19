@@ -47,7 +47,7 @@ export function ExportButton({
         </button>
       </form>
       {generating ? <p className="export-status" role="status">Generating…</p> : null}
-      {!generating && note !== null && note !== "" ? <p className="export-reason" role="status">{note}</p> : null}
+      {!generating && note !== null && note !== "" ? <Refusal note={note} /> : null}
       {latest === null ? null : (
         <p className="export-links">
           <span className="mono">{latest.number}</span>
@@ -56,5 +56,27 @@ export function ExportButton({
         </p>
       )}
     </div>
+  );
+}
+
+const CHECKS_LINK = new Set(["Checks have not run.", "The latest checks run did not succeed."]);
+
+function Refusal({ note }: { note: string }) {
+  const phrase = "Run checks again";
+  const at = note.indexOf(phrase);
+  if (at < 0) {
+    return (
+      <p className="export-reason" role="status">
+        {CHECKS_LINK.has(note) ? <a href="#run-checks">{note}</a> : note}
+      </p>
+    );
+  }
+  const withPeriod = note.startsWith(".", at + phrase.length);
+  return (
+    <p className="export-reason" role="status">
+      {note.slice(0, at)}
+      <a href="#run-checks">{withPeriod ? `${phrase}.` : phrase}</a>
+      {note.slice(at + phrase.length + (withPeriod ? 1 : 0))}
+    </p>
   );
 }
