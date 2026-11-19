@@ -15,8 +15,8 @@ export function RerunForm({ customerId }: { customerId: string }) {
 function RerunButton() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className="btn" disabled={pending} aria-busy={pending}>
-      {pending ? "Running…" : "Run again"}
+    <button id="run-checks" type="submit" className="btn" disabled={pending} aria-busy={pending}>
+      {pending ? "Running…" : "Run checks"}
     </button>
   );
 }

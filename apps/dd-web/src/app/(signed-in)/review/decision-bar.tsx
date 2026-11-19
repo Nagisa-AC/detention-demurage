@@ -121,20 +121,21 @@ function DecisionForm({
       ) : null}
       {absent && marking ? (
         <>
-          <label>
-            Text
-            <input name="text" value={text} autoComplete="off" onChange={(event) => setText(event.target.value)} />
-          </label>
-          <label>
-            Page
+          <div className="fld bar-field">
+            <label htmlFor={`present-text-${selected.key}`}>Text</label>
+            <input id={`present-text-${selected.key}`} name="text" value={text} autoComplete="off" onChange={(event) => setText(event.target.value)} />
+          </div>
+          <div className="fld bar-field page">
+            <label htmlFor={`present-page-${selected.key}`}>Page</label>
             <input
+              id={`present-page-${selected.key}`}
               name="page"
               inputMode="numeric"
               value={page}
               autoComplete="off"
               onChange={(event) => setPage(event.target.value)}
             />
-          </label>
+          </div>
           <Submit name="command" value="mark_present" className="btn primary">
             Save
           </Submit>
@@ -145,10 +146,10 @@ function DecisionForm({
       ) : null}
       {absent ? null : (
         <>
-          <label>
-            Text
-            <input name="text" value={text} autoComplete="off" onChange={(event) => setText(event.target.value)} />
-          </label>
+          <div className="fld bar-field">
+            <label htmlFor={`correct-text-${selected.key}`}>Text</label>
+            <input id={`correct-text-${selected.key}`} name="text" value={text} autoComplete="off" onChange={(event) => setText(event.target.value)} />
+          </div>
           <Submit name="command" value="correct" className="btn">
             Correct
           </Submit>

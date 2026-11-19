@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { initials } from "../../../initials";
 import { formatAmount } from "../../../review-format";
 import type { LatestChecks } from "../../../rules-run";
-import { AddCustomerForm } from "./add-customer-form";
+import { AddCustomerDrawer } from "./add-customer-form";
 
 export type CustomerListRow = {
   id: string;
@@ -41,19 +41,12 @@ export function CustomersView({ rows }: { rows: CustomerListRow[] }) {
           {rows.length} {rows.length === 1 ? "customer" : "customers"}
         </div>
         <div className="actions">
-          <button type="button" className="btn primary" aria-expanded={adding} onClick={() => setAdding((open) => !open)}>
+          <button type="button" className="btn primary" aria-expanded={adding} aria-haspopup="dialog" onClick={() => setAdding(true)}>
             Add customer
           </button>
         </div>
       </div>
-      {adding ? (
-        <div className="card" style={{ marginBottom: 0 }}>
-          <div className="ph">
-            <h2>Add customer</h2>
-          </div>
-          <AddCustomerForm />
-        </div>
-      ) : null}
+      <AddCustomerDrawer open={adding} onClose={() => setAdding(false)} />
       <section className="stats">
         <div className="stat">
           <div className="k mono">Disputable</div>

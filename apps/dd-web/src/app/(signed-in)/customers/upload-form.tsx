@@ -12,6 +12,8 @@ export function UploadForm({ customers }: { customers: Customer[] }) {
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const [over, setOver] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -94,33 +96,57 @@ export function UploadForm({ customers }: { customers: Customer[] }) {
     }
   }
 
+  const tone = messageTone(message);
   return (
     <form className="upload" onSubmit={onSubmit}>
-      <p>Upload a PDF invoice.</p>
       {customers.length > 1 ? (
-        <label>
-          Customer
-          <select name="customer" value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
+        <div className="fld">
+          <label htmlFor="upload-customer">Customer</label>
+          <select id="upload-customer" name="customer" value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
             {customers.map((customer) => (
               <option key={customer.id} value={customer.id}>
                 {customer.displayName}
               </option>
             ))}
           </select>
-        </label>
-      ) : (
-        <p>{customers[0]?.displayName}</p>
-      )}
-      <label>
-        PDF
-        <input name="pdf" type="file" accept="application/pdf,.pdf" />
+        </div>
+      ) : null}
+      <label
+        className={over ? "drop over" : "drop"}
+        onDragEnter={() => setOver(true)}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={() => setOver(false)}
+      >
+        <input
+          name="pdf"
+          type="file"
+          accept="application/pdf,.pdf"
+          onChange={(event) => setFileName(event.target.files?.[0]?.name ?? "")}
+        />
+        <strong>{fileName === "" ? "Drop a PDF here" : fileName}</strong>
+        <span className="help">{fileName === "" ? "or choose a file" : "Ready to upload"}</span>
       </label>
+      <p className="help">PDF only, up to 20 MiB.{customers.length === 1 && customers[0] !== undefined ? ` For ${customers[0].displayName}.` : ""}</p>
       <button type="submit" className="btn primary" disabled={busy}>
-        Upload
+        {busy ? "Uploading…" : "Upload"}
       </button>
-      <p role="status">{message}</p>
+      {message === "" ? null : (
+        <p className={tone === "" ? "form-status" : `form-status ${tone}`} role="status">
+          {message}
+        </p>
+      )}
     </form>
   );
+}
+
+function messageTone(message: string): "ok" | "err" | "" {
+  if (message === "" || message === "Checking the PDF.") return "";
+  if (message === "The PDF is stored." || message === "This PDF is already stored.") return "ok";
+  return "err";
 }
 
 async function postJson(path: string, body: unknown): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; message: string }> {
