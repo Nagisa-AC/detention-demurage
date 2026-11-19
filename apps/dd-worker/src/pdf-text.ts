@@ -8,7 +8,6 @@ export async function readPdfPages(pdf: Uint8Array): Promise<string[]> {
   const beside = new URL("./pdf.worker.mjs", import.meta.url);
   if (existsSync(fileURLToPath(beside))) GlobalWorkerOptions.workerSrc = beside.href;
   // pdfjs detaches the ArrayBuffer it is given. A copy leaves the caller's bytes for pdf-lib.
-  // pdfjs detaches the ArrayBuffer it is given. A copy leaves the caller's bytes for pdf-lib.
   const task = getDocument({ data: pdf.slice(), verbosity: 0 });
   let doc: Awaited<typeof task.promise> | undefined;
   try {

@@ -3,7 +3,8 @@ import type { Pool, PoolClient } from "pg";
 import type { StoredPage } from "./process.js";
 import type { SavedRead } from "./read.js";
 
-export type ClaimedRun = {
+export type ClaimedExtract = {
+  kind: "extract";
   id: string;
   customerId: string;
   documentId: string;
@@ -13,6 +14,16 @@ export type ClaimedRun = {
   sha256: string;
 };
 
+export type ClaimedReport = {
+  kind: "report";
+  id: string;
+  customerId: string;
+  attempts: number;
+  leaseToken: string;
+};
+
+export type ClaimedRun = ClaimedExtract | ClaimedReport;
+
 export async function claimNext(pool: Pool, leaseSeconds: number): Promise<ClaimedRun | null> {
   const client = await pool.connect();
   try {
@@ -21,7 +32,8 @@ export async function claimNext(pool: Pool, leaseSeconds: number): Promise<Claim
     const updated = await client.query<{
       id: string;
       customer_id: string;
-      document_id: string;
+      document_id: string | null;
+      kind: string;
       attempts: number;
       lease_token: string;
     }>(
@@ -32,22 +44,38 @@ export async function claimNext(pool: Pool, leaseSeconds: number): Promise<Claim
        WHERE run.id = (
          SELECT r.id
          FROM "ProcessingRun" r
-         JOIN "Document" d ON d.id = r.document_id
-         WHERE r.kind = 'extract'
-           AND r.finished_at IS NULL
+         LEFT JOIN "Document" d ON d.id = r.document_id
+         WHERE r.finished_at IS NULL
            AND r.attempts < 3
-           AND d.storage_key IS NOT NULL
            AND (r.lease_token IS NULL OR r.leased_at < now() - make_interval(secs => $2::double precision))
+           AND (
+             (r.kind = 'extract' AND d.storage_key IS NOT NULL)
+             OR r.kind = 'report'
+           )
          ORDER BY r.started_at
          FOR UPDATE OF r SKIP LOCKED
          LIMIT 1
        )
-       RETURNING run.id, run.customer_id, run.document_id, run.attempts, run.lease_token`,
+       RETURNING run.id, run.customer_id, run.document_id, run.kind, run.attempts, run.lease_token`,
       [token, leaseSeconds],
     );
     const row = updated.rows[0];
     if (row === undefined) {
       await client.query("COMMIT");
+      return null;
+    }
+    if (row.kind === "report") {
+      await client.query("COMMIT");
+      return {
+        kind: "report",
+        id: row.id,
+        customerId: row.customer_id,
+        attempts: row.attempts,
+        leaseToken: row.lease_token,
+      };
+    }
+    if (row.kind !== "extract" || row.document_id === null) {
+      await client.query("ROLLBACK");
       return null;
     }
     const document = await client.query<{ storage_key: string | null; sha256: string }>(
@@ -61,6 +89,7 @@ export async function claimNext(pool: Pool, leaseSeconds: number): Promise<Claim
     }
     await client.query("COMMIT");
     return {
+      kind: "extract",
       id: row.id,
       customerId: row.customer_id,
       documentId: row.document_id,
@@ -109,7 +138,7 @@ export async function requeueRun(pool: Pool, runId: string): Promise<boolean> {
 
 export async function finishRun(
   pool: Pool,
-  claimed: ClaimedRun,
+  claimed: ClaimedExtract,
   input: {
     permanent: boolean;
     finish?: "ok" | "failed";
@@ -167,7 +196,7 @@ export async function finishRun(
   }
 }
 
-async function insertRead(client: PoolClient, claimed: ClaimedRun, read: SavedRead): Promise<string> {
+async function insertRead(client: PoolClient, claimed: ClaimedExtract, read: SavedRead): Promise<string> {
   const invoice = await client.query<{ id: string }>(
     `INSERT INTO "Invoice" (
        customer_id, document_id, invoice_number, billing_party, billed_party,

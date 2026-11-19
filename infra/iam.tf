@@ -32,6 +32,14 @@ data "aws_iam_policy_document" "web" {
     actions   = ["s3:GetObject"]
     resources = ["${local.bucket_arn}/documents/*"]
   }
+
+  # The worker writes reports. The web app only streams a stored file. No DeleteObject.
+  statement {
+    sid       = "ReadReports"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${local.bucket_arn}/reports/*"]
+  }
 }
 
 # No login profile, so this user cannot open the console.
@@ -76,6 +84,15 @@ data "aws_iam_policy_document" "worker" {
     effect    = "Allow"
     actions   = ["s3:GetObject"]
     resources = ["${local.bucket_arn}/deploy/*"]
+  }
+
+  # The worker writes the PDF and CSV and can read them back. No DeleteObject.
+  statement {
+    sid     = "ReadAndWriteReports"
+    effect  = "Allow"
+    actions = ["s3:GetObject", "s3:PutObject"]
+
+    resources = ["${local.bucket_arn}/reports/*"]
   }
 
   statement {

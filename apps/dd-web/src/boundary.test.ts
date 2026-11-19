@@ -23,7 +23,9 @@ describe("dd-web boundary", () => {
         text.includes("dd-extract") ||
         text.includes("@anthropic-ai/sdk") ||
         text.includes("packages/extract") ||
-        text.includes("dangerouslySetInnerHTML")
+        text.includes("dangerouslySetInnerHTML") ||
+        text.includes("@react-pdf/renderer") ||
+        text.includes("pdf-lib")
       );
     });
     expect(banned).toEqual([]);
@@ -39,6 +41,7 @@ describe("dd-web boundary", () => {
       "(signed-in)/customers/[customerId]/page.tsx",
       "(signed-in)/customers/[customerId]/settings/page.tsx",
       "(signed-in)/customers/page.tsx",
+      "(signed-in)/firm/page.tsx",
       "(signed-in)/page.tsx",
       "(signed-in)/review/[invoiceId]/page.tsx",
       "(signed-in)/review/page.tsx",
@@ -52,6 +55,7 @@ describe("dd-web boundary", () => {
     const routes = files.filter((file) => file.endsWith("route.ts"));
     expect(routes.map(rel).sort()).toEqual([
       "api/pdf-worker/route.ts",
+      "api/reports/[customerId]/[exportId]/route.ts",
       "api/review/[customerId]/invoices/[invoiceId]/pdf/route.ts",
       "api/session/route.ts",
       "api/uploads/confirm/route.ts",
@@ -66,8 +70,10 @@ describe("dd-web boundary", () => {
     expect(actions.map(rel).sort()).toEqual([
       "(signed-in)/account.ts",
       "(signed-in)/customers/create-customer.ts",
+      "(signed-in)/customers/export-report.ts",
       "(signed-in)/customers/rerun-checks.ts",
       "(signed-in)/customers/save-settings.ts",
+      "(signed-in)/firm/save-firm.ts",
       "(signed-in)/review/actions.ts",
       "(signed-in)/sign-out.ts",
     ]);

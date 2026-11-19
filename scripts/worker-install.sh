@@ -36,7 +36,17 @@ echo "${SHA}  ${TMP}/worker.tar" | sha256sum -c -
 
 tar -tf "$TMP/worker.tar" | LC_ALL=C sort >"$TMP/listing"
 listing=$(cat "$TMP/listing")
-expected=$(printf '%s\n' main.mjs pdf.worker.mjs)
+expected=$(printf '%s\n' \
+  fonts/DejaVu-copyright.txt \
+  fonts/DejaVuSansMono-Bold.ttf \
+  fonts/DejaVuSansMono.ttf \
+  fonts/Inter-Bold.ttf \
+  fonts/Inter-Medium.ttf \
+  fonts/Inter-OFL.txt \
+  fonts/Inter-Regular.ttf \
+  fonts/Inter-SemiBold.ttf \
+  main.mjs \
+  pdf.worker.mjs)
 if [[ "$listing" != "$expected" ]]; then
   echo "The archive must contain main.mjs and pdf.worker.mjs." >&2
   exit 1

@@ -30,6 +30,7 @@ model Customer {
   feeInvoices    FeeInvoice[]
   auditEvents    AuditEvent[]
   configVersions CustomerConfigVersion[]
+  reportExports  ReportExport[]
 
   @@map("Customer")
 }
@@ -140,7 +141,8 @@ model ChargeLine {
 
 /// Extract runs store a page-status array in page_records.
 /// A rules run stores the check summary there: settings version, invoice ids, not_evaluable, needs_info, and disputable totals.
-/// Neither holds model text.
+/// A report run stores the rules run id, the firm profile version, and the actor. A failure stores a fixed reason.
+/// None of these hold model text.
 model ProcessingRun {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerId     String    @map("customer_id") @db.Uuid
@@ -161,6 +163,7 @@ model ProcessingRun {
   document Document? @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   invoice  Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   findings Finding[]
+  reportExports ReportExport[]
 
   @@index([customerId])
   @@map("ProcessingRun")
@@ -274,6 +277,55 @@ model CustomerConfigVersion {
 
   @@unique([customerId, version])
   @@map("CustomerConfigVersion")
+}
+
+/// Append-only for dd_app. A change is a new version. The highest version is current.
+/// The firm is one row-set for the practice, not one row-set per customer.
+model FirmProfileVersion {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  version     Int
+  firmName    String   @map("firm_name")
+  cityState   String   @map("city_state")
+  replyTo     String   @map("reply_to")
+  signerName  String   @map("signer_name")
+  signerTitle String   @map("signer_title")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reportExports ReportExport[]
+
+  @@unique([version])
+  @@map("FirmProfileVersion")
+}
+
+/// Append-only for dd_app. One stored PDF and CSV export.
+/// Foreign keys are ON DELETE RESTRICT and ON UPDATE RESTRICT.
+model ReportExport {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId       String   @map("customer_id") @db.Uuid
+  processingRunId  String   @map("processing_run_id") @db.Uuid
+  firmProfileId    String   @map("firm_profile_id") @db.Uuid
+  reportNumber     String   @unique @map("report_number")
+  series           String
+  year             Int
+  sequence         Int
+  settingsVersion  Int      @map("settings_version")
+  firmVersion      Int      @map("firm_version")
+  convention       String
+  pdfSha256        String   @map("pdf_sha256") @db.Char(64)
+  csvSha256        String   @map("csv_sha256") @db.Char(64)
+  pdfKey           String   @map("pdf_key")
+  csvKey           String   @map("csv_key")
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  customer      Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  processingRun ProcessingRun       @relation(fields: [processingRunId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  firmProfile   FirmProfileVersion  @relation(fields: [firmProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([series, year, sequence])
+  @@index([customerId])
+  @@map("ReportExport")
 }
 
 /// Append-only for dd_app. Review decisions are rows here.

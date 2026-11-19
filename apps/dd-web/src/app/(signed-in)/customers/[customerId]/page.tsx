@@ -5,6 +5,8 @@ import { requireSession } from "../../../../session";
 import { feePercent, formatSavedAt, readCustomerSettings } from "../../../../settings";
 import { shellFrame } from "../../../../shell-frame";
 import { Shell } from "../../../../shell";
+import { exportStatus } from "../../../../report/export";
+import { ExportButton } from "../export-button";
 import { FindingsTable } from "../findings-table";
 import { RerunForm } from "../rerun-form";
 import { UploadForm } from "../upload-form";
@@ -21,6 +23,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
   if (customer === undefined) notFound();
   const checks = (await readLatestChecks()).get(customer.id) ?? null;
   const board = await readFindingsBoard(customer.id);
+  const exported = await exportStatus(customer.id);
   const current = customer.versions[0];
   const config = current?.config ?? null;
   const meta = [
@@ -39,6 +42,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
         <h1>{customer.displayName}</h1>
         <div className="meta">{meta.length === 0 ? customer.configId : meta.join(" · ")}</div>
         <div className="actions">
+          <ExportButton customerId={customer.id} phase={exported.phase} reason={exported.reason} latest={exported.latest} />
           <a className="btn" href={`/customers/${customer.id}/settings`}>
             Settings
           </a>
