@@ -1,0 +1,174 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Customers</title><style>
+:root{--bg:#111110;--panel:#171715;--panel2:#1C1C19;--line:#2A2A26;--line2:#232320;--ink:#ECECE6;--mute:#8E8E85;--dim:#62625B;--accent:#E8A87C;--accentInk:#1A120C;--good:#16352A;--goodInk:#CDEBDC;--warn:#3A2A14;--warnInk:#F1C98F;--chip:#262622}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+.mono{font-family:"DejaVu Sans Mono",ui-monospace,monospace}
+a{color:inherit;text-decoration:none}
+header{display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid var(--line)}
+.logo{font-weight:700;font-size:15px;letter-spacing:.01em}
+nav{display:flex;gap:4px}
+nav a{padding:8px 12px;border-radius:6px;color:var(--mute);display:flex;gap:8px;align-items:center}
+nav a.on{color:var(--ink);background:var(--chip)}
+.count{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--chip);color:var(--mute)}
+nav a.on .count{background:#33332e}
+.user{margin-left:auto;color:var(--mute);font-size:13px}
+.crumb{padding:22px 32px 0;color:var(--mute);font-size:13px}
+.title{padding:6px 32px 22px;display:flex;align-items:flex-end;gap:16px}
+.title h1{margin:0;font-size:28px;font-weight:600;letter-spacing:-.01em}
+.title .meta{color:var(--mute);font-size:13px;padding-bottom:5px}
+.title .actions{margin-left:auto;display:flex;gap:10px}
+.btn{height:38px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accentInk);border-color:var(--accent);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.stat{padding:22px 32px 24px;border-right:1px solid var(--line)}
+.stat:last-child{border-right:0}
+.stat .k{font-size:11.5px;letter-spacing:.08em;color:var(--mute);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.stat .v{font-size:40px;font-weight:500;letter-spacing:-.02em;margin:12px 0 6px}
+.stat .v small{font-size:16px;color:var(--mute);margin-left:6px;font-weight:400}
+.stat .v.word{font-size:30px;margin:18px 0 10px}
+.stat .s{color:var(--mute);font-size:13px}
+.filters{display:flex;gap:16px;align-items:flex-end;padding:22px 32px}
+.f label{display:block;font-size:11.5px;letter-spacing:.08em;color:var(--mute);margin-bottom:8px;text-transform:uppercase}
+.input{height:44px;border:1px solid var(--line);background:var(--panel);border-radius:6px;display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--mute);font-size:14px}
+.input.sel{color:var(--ink);justify-content:space-between}
+.chev{color:var(--mute)}
+.show{display:flex;gap:18px;align-items:center;height:44px;color:var(--ink)}
+.cb{width:16px;height:16px;border:1px solid #4A4A44;border-radius:3px;display:inline-block;vertical-align:-3px;margin-right:8px}
+.cb.on{background:var(--accent);border-color:var(--accent)}
+.right{margin-left:auto;color:var(--mute);font-size:13px;height:44px;display:flex;align-items:center}
+.card{margin:0 32px 40px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tabs{display:flex;gap:6px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.tab{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:6px;color:var(--mute)}
+.tab .count{background:var(--chip)}
+.tab.on{background:var(--accent);color:var(--accentInk);font-weight:600}
+.tab.on .count{background:transparent;color:var(--accentInk);font-weight:600}
+table{width:100%;border-collapse:collapse}
+th{font-weight:500;color:var(--mute);text-align:left;font-size:13px;padding:14px 16px;background:var(--panel2);border-bottom:1px solid var(--line)}
+th.r,td.r{text-align:right}
+th .sort{color:var(--dim);margin-left:4px}
+th.on{color:var(--ink)}
+td{padding:16px;border-bottom:1px solid var(--line2);vertical-align:middle;font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+.inv{display:flex;gap:14px;align-items:center}
+.badge{width:36px;height:36px;border-radius:8px;background:#22324F;color:#B9CCF4;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+.inv .n{font-weight:500;display:flex;gap:10px;align-items:center}
+.inv .sub{color:var(--mute);font-size:13px;margin-top:3px}
+.tag{font-size:11.5px;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--mute);font-weight:500}
+.strike{color:var(--dim);text-decoration:line-through;font-size:13px}
+.amt{font-size:14.5px;margin-top:2px}
+.pill{display:inline-block;padding:6px 10px;border-radius:5px;font-size:13px;font-weight:500;background:var(--good);color:var(--goodInk);white-space:nowrap}
+.pill.warn{background:var(--warn);color:var(--warnInk)}
+.none{color:var(--dim)}
+.check{font-size:13px}
+.check .why{color:var(--mute);font-size:12.5px;margin-top:3px}
+.icons{color:var(--mute);letter-spacing:6px;font-size:13px}
+.foot{padding:14px 16px;color:var(--mute);font-size:13px;border-top:1px solid var(--line);background:var(--panel)}
+
+.page{padding:0 32px 40px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;padding:0 32px 120px}
+.panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.ph{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.ph h2{margin:0;font-size:14px;font-weight:600}
+.ph .side{margin-left:auto;color:var(--mute);font-size:12.5px}
+.row{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line2)}
+.row:last-child{border-bottom:0}
+.row .l{flex:1;min-width:0}
+.row .l .s{color:var(--mute);font-size:12.5px;margin-top:2px}
+.row.sel{background:#22221E;box-shadow:inset 3px 0 0 var(--accent)}
+.st{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--mute);white-space:nowrap}
+.st.warn{background:var(--warn);color:var(--warnInk)}
+.st.good{background:var(--good);color:var(--goodInk)}
+.st.blue{background:#1E2B45;color:#B9CCF4}
+.st.out{background:transparent;border:1px solid var(--line);color:var(--dim)}
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;color:var(--mute);font-size:13px}
+.paper{background:#F4F3EE;border-radius:6px;padding:0;overflow:hidden;position:relative}
+.paper img{width:100%;display:block}
+.cap{color:var(--mute);font-size:12.5px;margin-top:10px}
+.bar{position:fixed;left:0;right:0;bottom:0;border-top:1px solid var(--line);background:#141412;padding:14px 32px;display:flex;align-items:center;gap:12px}
+.sel2{height:38px;border:1px solid var(--line);background:var(--panel);border-radius:8px;display:inline-flex;align-items:center;gap:10px;padding:0 12px;font-size:13px}
+.saved{color:var(--goodInk);font-size:12.5px}
+.btn.ghost{background:transparent}
+.btn.dis{opacity:.45}
+.kv{display:grid;grid-template-columns:170px 1fr;gap:10px 16px;padding:16px;font-size:13.5px}
+.kv .k{color:var(--mute)}
+.mono2{font-family:"DejaVu Sans Mono",monospace;font-size:13px}
+.code{font-family:"DejaVu Sans Mono",monospace;font-size:12.5px;background:#0D0D0C;border:1px solid var(--line);border-radius:6px;padding:14px;line-height:1.65;color:#CFCFC7;white-space:pre}
+.steps{list-style:none;margin:0;padding:8px 16px 14px}
+.steps li{display:flex;gap:12px;padding:9px 0;font-size:13.5px;align-items:flex-start}
+.dot{width:20px;height:20px;border-radius:50%;border:1px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--mute);margin-top:1px}
+.dot.done{background:var(--good);border-color:var(--good);color:var(--goodInk)}
+.dot.now{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}
+.steps li.later{color:var(--dim)}
+.gate{padding:4px 16px 16px;font-size:13px}
+.gate div{padding:5px 0}
+.ok{color:var(--goodInk)}
+.wait{color:var(--warnInk)}
+.banner{margin:0 32px 18px;border:1px solid #4A3A1F;background:#211A10;color:var(--warnInk);border-radius:8px;padding:12px 16px;font-size:13px}
+.calc{width:auto}
+.calc td{padding:5px 24px 5px 0;border:0}
+.calc tr.r td{border-top:1px solid var(--line);padding-top:9px;font-weight:600}
+.field{margin-bottom:14px}
+.field label{display:block;color:var(--mute);font-size:12px;margin-bottom:6px}
+.field .input{height:38px;font-size:13.5px;color:var(--ink)}
+.field .input.empty{color:var(--dim)}
+.signin{min-height:900px;display:flex;align-items:center;justify-content:center}
+.sbox{width:400px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:32px}
+.sbox h1{margin:0 0 6px;font-size:22px;font-weight:600}
+.otp{display:flex;gap:8px}
+.otp span{width:48px;height:52px;border:1px solid var(--line);border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:"DejaVu Sans Mono",monospace;font-size:20px}
+.otp span.on{border-color:var(--accent)}
+</style><style>
+:root{--bg:#F7F6F2;--panel:#FFFFFF;--panel2:#F2F1EC;--line:#E1DFD7;--line2:#ECEAE4;--ink:#1A1A17;--mute:#66655E;--dim:#A09F97;--accent:#E8A87C;--accentInk:#2A170A;--good:#E1F1E8;--goodInk:#1D5A3E;--warn:#FBEBD3;--warnInk:#8A4B00;--chip:#ECEBE5}
+nav a.on .count{background:#E0DED6}
+.badge{background:#DFE7F7 !important;color:#2A4C8E !important}
+.row.sel{background:#F5F1EA}
+.st.blue{background:#E0E8F8;color:#2A4C8E}
+.code{background:#F7F6F2;color:#3A3A35}
+.paper{border:1px solid var(--line)}
+.bar{background:#FFFFFF}
+.cb{border-color:#B9B7AE}
+.banner{background:#FFF7EA;border-color:#F0D6AA}
+.otp span{background:#fff}
+</style><style>
+.scrim{position:fixed;inset:0;background:rgba(26,26,23,.28)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:480px;background:var(--panel);border-left:1px solid var(--line);box-shadow:-12px 0 32px rgba(0,0,0,.08);display:flex;flex-direction:column}
+.dh{padding:22px 28px 18px;border-bottom:1px solid var(--line)}
+.dh .k{font-family:"DejaVu Sans Mono",monospace;font-size:11px;letter-spacing:.08em;color:var(--mute);text-transform:uppercase}
+.dh h2{margin:6px 0 4px;font-size:20px;font-weight:600}
+.dh p{margin:0;color:var(--mute);font-size:13px}
+.db{padding:24px 28px;display:flex;flex-direction:column;gap:20px;flex:1}
+.fld label{display:block;font-size:13px;font-weight:500;margin-bottom:7px}
+.fld .in{height:42px;border:1px solid var(--line);border-radius:7px;background:var(--bg);display:flex;align-items:center;padding:0 13px;font-size:14px}
+.fld .in.focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(232,168,124,.25);background:#fff}
+.fld .in.mono{font-family:"DejaVu Sans Mono",monospace;font-size:13px}
+.fld .help{color:var(--mute);font-size:12.5px;margin-top:6px;line-height:1.5}
+.fld .ok{color:var(--goodInk);font-size:12.5px;margin-top:6px}
+.next{border:1px dashed var(--line);border-radius:8px;padding:14px 16px;font-size:13px;color:var(--mute);line-height:1.6}
+.next b{color:var(--ink);font-weight:600}
+.df{padding:16px 28px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;background:var(--panel2)}
+</style></head><body><header><div class="logo">D&amp;D Recovery</div><nav><a class="on">Customers </a><a class="">Review queue <span class="count">1</span></a><a class="">Cases <span class="count">2</span></a><a class="">Money </a></nav><div class="user">Ibrahim · MFA on · Sign out</div></header>
+<div class="title" style="padding-top:26px"><h1>Customers</h1><div class="meta">2 customers</div><div class="actions"><span class="btn primary">Add customer</span></div></div>
+<section class="stats">
+ <div class="stat"><div class="k mono">% Disputable</div><div class="v">3,000.00<small>USD</small></div><div class="s">Across all customers · day 1 count</div></div>
+ <div class="stat"><div class="k mono">▦ Invoices</div><div class="v">9</div><div class="s">8 approved · 1 waiting for review</div></div>
+ <div class="stat"><div class="k mono">⇄ Open cases</div><div class="v">0</div><div class="s">Cases start after attorney review</div></div>
+ <div class="stat"><div class="k mono">$ Recovered</div><div class="v">0.00<small>USD</small></div><div class="s">No disputes sent yet</div></div>
+</section>
+<div class="filters"><div class="f" style="width:340px"><label class="mono">Search</label><div class="input">⌕&nbsp; Customer or config id</div></div>
+<div class="f" style="width:240px"><label class="mono">Sort by</label><div class="input sel">Most disputable <span class="chev">⌄</span></div></div><div class="right">2 customers</div></div>
+<div class="card"><table>
+<tr><th>Customer</th><th>Settings</th><th class="r">Invoices</th><th class="r on">Disputable <span class="sort">↓</span></th><th class="r">Recovered</th><th>Authorization</th><th>Next deadline</th></tr>
+<tr><td><div class="inv"><div class="badge">HH</div><div><div class="n">Harbor Home Goods <span class="tag">Synthetic</span></div><div class="sub mono2">harbor_home</div></div></div></td>
+<td>v1 · fee 25%</td><td class="r">8</td><td class="r"><span class="pill">3,000.00</span></td><td class="r none">0.00</td><td>Valid to 2028-01-10</td><td class="none">—</td></tr>
+<tr><td><div class="inv"><div class="badge" style="background:#2E2A1E;color:#E9D7A8">AC</div><div><div class="n">Acme Imports <span class="tag">New</span></div><div class="sub mono2">acme_imports</div></div></div></td>
+<td><span class="st warn">No settings yet</span></td><td class="r">1</td><td class="r none">—</td><td class="r none">—</td><td class="none">Not signed</td><td class="none">—</td></tr>
+</table><div class="foot">Amounts in USD · disputable uses the latest checks for each customer</div></div><div class="scrim"></div>
+<aside class="drawer" aria-label="Add customer">
+ <div class="dh"><div class="k">New customer</div><h2>Add a customer</h2><p>An importer whose D&amp;D invoices you will audit.</p></div>
+ <div class="db">
+  <div class="fld"><label>Company name</label><div class="in focus">Acme Imports</div><div class="help">How it appears in the app and on the client's report.</div></div>
+  <div class="fld"><label>Customer ID</label><div class="in mono">acme_imports</div><div class="ok">✓ Available · filled from the name, you can edit it</div><div class="help">Permanent. Lowercase letters, numbers and underscores. The customer's settings must use this same id.</div></div>
+  <div class="next"><b>Next:</b> add settings (fee, authorization, carriers, contract terms), then upload invoices. You can do both from the customer's page.</div>
+ </div>
+ <div class="df"><span class="btn">Cancel</span><span class="btn primary">Add customer</span></div>
+</aside></body></html>
