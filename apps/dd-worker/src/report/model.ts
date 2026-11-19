@@ -8,6 +8,7 @@ import {
   cardCopy,
   carrierPhrase,
   containSentence,
+  citationFootnote,
   conventionNote,
   dateSpan,
   doNotPursueTag,
@@ -15,7 +16,7 @@ import {
   exhibitIntro,
   findingResult,
   findingsNote,
-  footnoteText,
+  findingsTotalLabel,
   largestManual,
   largestNote,
   largestParagraph,
@@ -106,7 +107,7 @@ export type ReportBuild = {
     dispute: string;
     amber: boolean;
   }[];
-  total: { billed: string; correct: string; dispute: string } | null;
+  total: { label: string; billed: string; correct: string; dispute: string } | null;
   amberNote: string | null;
   steps: string[];
   cards: {
@@ -325,7 +326,13 @@ export function buildReport(input: {
         label: "In dispute",
         value: primary === undefined ? "0.00" : formatAmount(primary.amount),
         unit: primary?.currency ?? "",
-        note: otherPrimary === undefined ? "" : conventionNote(convention, otherPrimary.amount),
+        note: otherPrimary === undefined
+          ? ""
+          : conventionNote(
+              convention,
+              otherPrimary.amount,
+              primary !== undefined && cents(primary.amount) === cents(otherPrimary.amount),
+            ),
         mono: false,
       },
       {
@@ -440,7 +447,7 @@ function totalRow(rows: ReportBuild["rows"]): ReportBuild["total"] {
   const correct = sumAmounts(rows.map((row) => rawAmount(row.correct)));
   const dispute = sumAmounts(rows.map((row) => rawAmount(row.dispute)));
   if (billed === null || correct === null || dispute === null) return null;
-  return { billed, correct, dispute };
+  return { label: findingsTotalLabel(billed, correct), billed, correct, dispute };
 }
 
 function scopeOf(
@@ -517,19 +524,13 @@ function lowerConvention(day0: readonly Money[], day1: readonly Money[]): "day0"
 }
 
 function markCitations(citations: readonly string[], catalog: Map<string, number>): string {
-  const marks: number[] = [];
-  for (const citation of citations) {
-    const text = footnoteText(citation);
-    const existing = catalog.get(text);
-    if (existing !== undefined) {
-      marks.push(existing);
-      continue;
-    }
-    const n = catalog.size + 1;
-    catalog.set(text, n);
-    marks.push(n);
-  }
-  return marks.map(superscript).join("");
+  if (citations.length === 0) return "";
+  const text = citationFootnote(citations);
+  const existing = catalog.get(text);
+  if (existing !== undefined) return superscript(existing);
+  const n = catalog.size + 1;
+  catalog.set(text, n);
+  return superscript(n);
 }
 
 function superscript(n: number): string {

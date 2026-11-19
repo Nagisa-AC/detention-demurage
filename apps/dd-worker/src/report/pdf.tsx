@@ -194,10 +194,7 @@ function Front({ model }: { model: ReportBuild }) {
         {model.total === null ? <Text style={styles.sub}>No findings.</Text> : (
           <View style={styles.total}>
             <View style={styles.cellInv} />
-            <Text style={[styles.totalText, { flex: 1 }]}>Total</Text>
-            <View style={styles.cellMoney}>
-              <Text style={styles.totalText}>{model.total.billed} → {model.total.correct}</Text>
-            </View>
+            <Text style={[styles.totalText, { flex: 1 }]}>{model.total.label}</Text>
             <View style={styles.cellDispute}>
               <Text style={styles.totalText}>{model.total.dispute}</Text>
             </View>

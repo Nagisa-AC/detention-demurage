@@ -204,10 +204,15 @@ export function summarySub(carrier: string, span: string | null, issued: string)
   return `${dated} · issued ${issued}`;
 }
 
-export function conventionNote(chosen: "day0" | "day1", otherAmount: string): string {
+export function conventionNote(chosen: "day0" | "day1", otherAmount: string, same: boolean): string {
+  if (same) return "Both counts give the same total";
   const chosenLabel = chosen === "day1" ? "Day 1" : "Day 0";
   const otherLabel = chosen === "day1" ? "day 0" : "day 1";
   return `${chosenLabel} count · ${otherLabel} gives ${formatAmount(otherAmount)}`;
+}
+
+export function findingsTotalLabel(billed: string, correct: string): string {
+  return `Billed ${billed} → correct ${correct}`;
 }
 
 export function billedNote(amount: string): string {
@@ -296,6 +301,31 @@ export function missingFileCaption(): string {
 export function footnoteText(citation: string): string {
   if (citation.startsWith("46 CFR")) return citation;
   return `${citation}, as cited on the invoice`;
+}
+
+/** One footnote for a finding's citations. Shared CFR stems keep a single section number. */
+export function citationFootnote(citations: readonly string[]): string {
+  const parts: string[] = [];
+  const grouped = new Map<string, string[]>();
+  for (const citation of citations) {
+    const match = /^46 CFR (\d+(?:\.\d+)?)((?:\([^)]+\))+)$/.exec(citation);
+    if (match?.[1] === undefined || match[2] === undefined) {
+      parts.push(footnoteText(citation));
+      continue;
+    }
+    const tails = grouped.get(match[1]);
+    if (tails === undefined) {
+      grouped.set(match[1], [match[2]]);
+      parts.push(match[1]);
+      continue;
+    }
+    if (!tails.includes(match[2])) tails.push(match[2]);
+  }
+  return parts.map((part) => {
+    const tails = grouped.get(part);
+    if (tails === undefined) return part;
+    return `46 CFR ${part}${tails[0] ?? ""}${tails.slice(1).map((tail) => `, ${tail}`).join("")}`;
+  }).join(", ");
 }
 
 const PAY_CITATION = "46 CFR 541.5";

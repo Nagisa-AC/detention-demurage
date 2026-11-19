@@ -26,8 +26,11 @@ export type Clip = {
   bottom: number;
   right: number;
   top: number;
+  pageWidth: number;
   boxes: Hit[];
 };
+
+const CLIP_MARGIN = 6;
 
 type TextItem = { str: string; transform: number[]; width: number; height: number };
 
@@ -79,8 +82,8 @@ export async function renderExhibits(model: Pick<ReportBuild, "exhibits" | "exhi
   }
   cursor -= 6;
 
-  let first = true;
   const contentWidth = PAGE_WIDTH - MARGIN_X * 2;
+  const imageWidth = contentWidth - 20;
   for (const exhibit of model.exhibits) {
     const clips: { page: PDFEmbeddedPage; width: number; height: number }[] = [];
     for (const source of exhibit.clips) {
@@ -88,80 +91,81 @@ export async function renderExhibits(model: Pick<ReportBuild, "exhibits" | "exhi
       if (bounds === null) continue;
       const embedded = await embedClip(pdf, source.pdf, bounds);
       if (embedded === null) continue;
-      clips.push(embedded);
+      const scale = imageWidth / embedded.pageWidth;
+      clips.push({ page: embedded.page, width: embedded.width * scale, height: embedded.height * scale });
     }
     const whoWidth = mono.widthOfTextAtSize(exhibit.who, 8);
     const captionWidth = Math.max(120, contentWidth - 96 - whoWidth);
     const captionLines = wrap(exhibit.caption, regular, 8, captionWidth);
     const headerH = Math.max(26, 8 + captionLines.length * 11 + 8);
-    const roomFor = (maxImage: number): { sizes: { width: number; height: number }[]; block: number } => {
-      const sizes = clips.map((clip) => fitted(clip.width, clip.height, maxImage));
-      const images = sizes.reduce((sum, size) => sum + size.height + 8, 0);
-      return { sizes, block: headerH + 12 + images + 8 };
-    };
-    let packed = roomFor(220);
-    if (!first && cursor - packed.block < MARGIN_BOTTOM) {
+    const freshPage = () => {
       page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
       cursor = PAGE_HEIGHT - MARGIN_TOP;
       drawHead();
+    };
+    const paintHeader = () => {
+      page.drawRectangle({
+        x: MARGIN_X,
+        y: cursor - headerH,
+        width: contentWidth,
+        height: headerH,
+        color: panel,
+        borderColor: line,
+        borderWidth: 0.75,
+      });
+      const headerTextY = cursor - 16;
+      page.drawText(`EXHIBIT ${exhibit.letter}`, { x: MARGIN_X + 8, y: headerTextY, size: 7, font: mono, color: mute });
+      page.drawText(exhibit.who, { x: MARGIN_X + 78, y: headerTextY, size: 8, font: mono, color: ink });
+      let captionY = headerTextY;
+      for (const caption of captionLines) {
+        page.drawText(caption, { x: MARGIN_X + 86 + whoWidth, y: captionY, size: 8, font: regular, color: mute });
+        captionY -= 11;
+      }
+      cursor -= headerH;
+    };
+    const closeBox = (top: number) => {
+      page.drawRectangle({
+        x: MARGIN_X,
+        y: cursor,
+        width: contentWidth,
+        height: top - cursor,
+        borderColor: line,
+        borderWidth: 0.75,
+      });
+    };
+    if (cursor - (headerH + 20 + (clips[0]?.height ?? 0)) < MARGIN_BOTTOM && cursor < PAGE_HEIGHT - MARGIN_TOP - 1) freshPage();
+    let top = cursor;
+    paintHeader();
+    if (clips.length === 0) {
+      cursor -= 8;
+      closeBox(top);
+      cursor -= 12;
+      continue;
     }
-    first = false;
-    const available = cursor - MARGIN_BOTTOM;
-    if (packed.block > available && clips.length > 0) {
-      const overhead = headerH + 12 + clips.length * 8 + 8;
-      const natural = clips.reduce((sum, clip) => sum + fitted(clip.width, clip.height, 220).height, 0);
-      const scale = Math.max(0.35, (available - overhead) / Math.max(natural, 1));
-      packed = roomFor(220 * scale);
-    }
-    const top = cursor;
-    const bottom = top - packed.block;
-    page.drawRectangle({
-      x: MARGIN_X,
-      y: bottom,
-      width: contentWidth,
-      height: packed.block,
-      borderColor: line,
-      borderWidth: 0.75,
-    });
-    page.drawRectangle({
-      x: MARGIN_X,
-      y: top - headerH,
-      width: contentWidth,
-      height: headerH,
-      color: panel,
-      borderColor: line,
-      borderWidth: 0.75,
-    });
-    const headerTextY = top - 16;
-    page.drawText(`EXHIBIT ${exhibit.letter}`, { x: MARGIN_X + 8, y: headerTextY, size: 7, font: mono, color: mute });
-    page.drawText(exhibit.who, { x: MARGIN_X + 78, y: headerTextY, size: 8, font: mono, color: ink });
-    let captionY = headerTextY;
-    for (const caption of captionLines) {
-      page.drawText(caption, { x: MARGIN_X + 86 + whoWidth, y: captionY, size: 8, font: regular, color: mute });
-      captionY -= 11;
-    }
-    let imageY = top - headerH - 10;
     for (let index = 0; index < clips.length; index += 1) {
       const clip = clips[index];
-      const fit = packed.sizes[index];
-      if (clip === undefined || fit === undefined) continue;
-      imageY -= fit.height;
-      page.drawPage(clip.page, { x: MARGIN_X + 10, y: imageY, width: fit.width, height: fit.height });
-      imageY -= 8;
+      if (clip === undefined) continue;
+      if (cursor - clip.height - 18 < MARGIN_BOTTOM && index > 0) {
+        cursor -= 8;
+        closeBox(top);
+        cursor -= 12;
+        freshPage();
+        top = cursor;
+        paintHeader();
+      }
+      cursor -= 10;
+      cursor -= clip.height;
+      page.drawPage(clip.page, { x: MARGIN_X + 10, y: cursor, width: clip.width, height: clip.height });
     }
-    cursor = bottom - 12;
+    cursor -= 8;
+    closeBox(top);
+    cursor -= 12;
   }
   if (pdf.getPageCount() === 0) return null;
   return pdf.save({ useObjectStreams: false, updateFieldAppearances: false });
 }
 
-function fitted(width: number, height: number, maxHeight: number): { width: number; height: number } {
-  const maxWidth = (PAGE_WIDTH - MARGIN_X * 2) * 0.74;
-  const scale = Math.min(maxWidth / Math.max(width, 1), maxHeight / Math.max(height, 1));
-  return { width: width * scale, height: height * scale };
-}
-
-async function embedClip(pdf: PDFDocument, bytes: Uint8Array, clip: Clip): Promise<{ page: Awaited<ReturnType<PDFDocument["embedPage"]>>; width: number; height: number } | null> {
+async function embedClip(pdf: PDFDocument, bytes: Uint8Array, clip: Clip): Promise<{ page: Awaited<ReturnType<PDFDocument["embedPage"]>>; width: number; height: number; pageWidth: number } | null> {
   const source = await PDFDocument.load(bytes);
   const page = source.getPage(clip.page - 1);
   if (page === undefined) return null;
@@ -178,7 +182,7 @@ async function embedClip(pdf: PDFDocument, bytes: Uint8Array, clip: Clip): Promi
     });
   }
   const embedded = await pdf.embedPage(page, { left: clip.left, bottom: clip.bottom, right: clip.right, top: clip.top });
-  return { page: embedded, width: clip.right - clip.left, height: clip.top - clip.bottom };
+  return { page: embedded, width: clip.right - clip.left, height: clip.top - clip.bottom, pageWidth: clip.pageWidth };
 }
 
 async function locate(pdf: Uint8Array, pageNumber: number, needles: readonly string[]): Promise<Clip | null> {
@@ -190,72 +194,80 @@ async function locate(pdf: Uint8Array, pageNumber: number, needles: readonly str
   const items = await textItems(pdf, pageNumber);
   const useful = needles.map((needle) => needle.trim()).filter((needle) => needle.length >= 4);
   const boxes = useful.length === 0 ? [] : boxesFor(items, useful);
-  if (boxes.length === 0) {
-    return { page: pageNumber, hits: 0, left: 36, bottom: height * 0.42, right: width - 36, top: height - 28, boxes: [] };
-  }
+  if (boxes.length === 0) return null;
   let bottom = height;
   let top = 0;
   for (const box of boxes) {
     bottom = Math.min(bottom, box.y);
     top = Math.max(top, box.y + box.h);
   }
-  bottom -= 8;
-  top += 8;
-  if (top - bottom < 48) {
-    const mid = (top + bottom) / 2;
-    top = mid + 24;
-    bottom = mid - 24;
-  }
-  let left = width;
-  let right = 0;
-  for (const item of items) {
-    if (item.width <= 0) continue;
-    const x = item.transform[4] ?? 0;
-    const baseline = item.transform[5] ?? 0;
-    const h = Math.max(item.height, Math.abs(item.transform[3] ?? 0), 8);
-    const itemBottom = baseline - h * 0.2;
-    const itemTop = itemBottom + h;
-    if (itemTop < bottom || itemBottom > top) continue;
-    left = Math.min(left, x);
-    right = Math.max(right, x + item.width);
-  }
-  if (right <= left) {
-    for (const box of boxes) {
-      left = Math.min(left, box.x);
-      right = Math.max(right, box.x + box.w);
-    }
-  }
-  left -= 12;
-  right += 12;
-  left = clamp(left, 0, width - 1);
-  right = clamp(right, left + 1, width);
+  bottom -= CLIP_MARGIN;
+  top += CLIP_MARGIN;
   bottom = clamp(bottom, 0, height - 1);
   top = clamp(top, bottom + 1, height);
-  return { page: pageNumber, hits: boxes.length, left, bottom, right, top, boxes };
+  return { page: pageNumber, hits: boxes.length, left: 0, bottom, right: width, top, pageWidth: width, boxes };
 }
 
 function boxesFor(items: readonly TextItem[], needles: readonly string[]): Hit[] {
-  const lines: { baseline: number; items: TextItem[] }[] = [];
-  const ordered = [...items].filter((item) => item.str !== "").sort((left, right) => (right.transform[5] ?? 0) - (left.transform[5] ?? 0) || (left.transform[4] ?? 0) - (right.transform[4] ?? 0));
+  const lines: TextItem[][] = [];
+  const ordered = [...items].filter((item) => item.str.trim() !== "").sort((left, right) => (right.transform[5] ?? 0) - (left.transform[5] ?? 0) || (left.transform[4] ?? 0) - (right.transform[4] ?? 0));
   for (const item of ordered) {
     const baseline = item.transform[5] ?? 0;
     const current = lines[lines.length - 1];
-    if (current !== undefined && Math.abs(current.baseline - baseline) < 2) current.items.push(item);
-    else lines.push({ baseline, items: [item] });
+    const currentBaseline = current?.[0]?.transform[5] ?? 0;
+    if (current !== undefined && Math.abs(currentBaseline - baseline) < 2) current.push(item);
+    else lines.push([item]);
   }
   const boxes: Hit[] = [];
-  for (const group of lines) {
-    const text = group.items.map((item) => item.str).join("");
-    if (!needles.some((needle) => text.includes(needle))) continue;
-    for (const item of group.items) {
-      if (item.width <= 0) continue;
-      const x = item.transform[4] ?? 0;
-      const baseline = item.transform[5] ?? 0;
-      const h = Math.max(item.height, Math.abs(item.transform[3] ?? 0), 8);
-      boxes.push({ x, y: baseline - h * 0.2, w: item.width, h });
+  const seen = new Set<TextItem>();
+  for (const line of lines) {
+    const text = line.map((item) => item.str).join("");
+    for (const needle of needles) {
+      let from = 0;
+      while (from < text.length) {
+        const at = text.indexOf(needle, from);
+        if (at < 0) break;
+        for (const cover of itemsCovering(line, at, at + needle.length)) {
+          if (seen.has(cover.item) || cover.item.width <= 0) continue;
+          seen.add(cover.item);
+          const end = cover.start === 0 ? cover.item.str.length : cover.end;
+          boxes.push(hitOf(cover.item, cover.start, end));
+        }
+        from = at + Math.max(needle.length, 1);
+      }
     }
   }
   return boxes;
+}
+
+function itemsCovering(line: readonly TextItem[], start: number, end: number): { item: TextItem; start: number; end: number }[] {
+  const covered: { item: TextItem; start: number; end: number }[] = [];
+  let cursor = 0;
+  for (const item of line) {
+    const next = cursor + item.str.length;
+    if (next > start && cursor < end) {
+      covered.push({
+        item,
+        start: Math.max(0, start - cursor),
+        end: Math.min(item.str.length, end - cursor),
+      });
+    }
+    cursor = next;
+  }
+  return covered;
+}
+
+function hitOf(item: TextItem, start: number, end: number): Hit {
+  const length = Math.max(item.str.length, 1);
+  const unit = item.width / length;
+  const baseline = item.transform[5] ?? 0;
+  const h = Math.max(item.height, Math.abs(item.transform[3] ?? 0), 8);
+  return {
+    x: (item.transform[4] ?? 0) + unit * start - 1.5,
+    y: baseline - h * 0.2 - 1,
+    w: Math.max(unit * (end - start), 4) + 3,
+    h: h + 2,
+  };
 }
 
 function useBundledWorker(): void {
