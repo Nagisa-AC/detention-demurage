@@ -66,7 +66,25 @@ describe("report export", () => {
     expect(lateText).not.toContain("SYN-1002");
     const bounds = await clipInvoicePage(new Uint8Array(late), 1, ["2026-04-08", "2026-03-02"]);
     expect(bounds?.page).toBe(1);
-    expect(bounds?.hits ?? 0).toBeGreaterThan(0);
+    expect(bounds?.left).toBe(0);
+    expect(bounds?.right).toBe(612);
+    expect(bounds?.pageWidth).toBe(612);
+    const lateHeight = (bounds?.top ?? 0) - (bounds?.bottom ?? 0);
+    expect(lateHeight).toBeGreaterThan(200);
+    expect(lateHeight).toBeLessThan(700);
+    const chargeRow = bounds?.boxes.filter((box) => box.y < 320) ?? [];
+    expect(chargeRow).toHaveLength(1);
+    expect(chargeRow[0]?.x).toBeGreaterThan(280);
+    const missingPdf = new Uint8Array(fs.readFileSync(path.join(fixtureDir, "missing_elements.pdf")));
+    const missingBounds = await clipInvoicePage(missingPdf, 1, ["Allowed free time", "Free-time start", "rules compliance", "no contribution"]);
+    expect(missingBounds?.pageWidth).toBe(bounds?.pageWidth);
+    expect((missingBounds?.top ?? 0) - (missingBounds?.bottom ?? 0)).toBeLessThan(80);
+
+    expect(model.footnotes.map((note) => note.text)).toContain("46 CFR 541.6(b)(4), (b)(5), (e)(1), (e)(2)");
+    const missingCard = model.cards.find((card) => card.invoice === "SYN-1002");
+    expect(missingCard?.body.split("This one omits")[0]?.match(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g)).toHaveLength(1);
+    expect(model.stats[0]?.note).toBe("Day 1 count · day 0 gives 3,250.00");
+    expect(model.total?.label).toBe("Billed 7,450.00 → correct 4,450.00");
 
     const exhibit = model.exhibits.find((item) => item.who.startsWith("SYN-1003"));
     expect(exhibit?.clips.map((clip) => clip.page)).toEqual([1]);
@@ -81,15 +99,32 @@ describe("report export", () => {
     expect(text).toContain("TMR-2026-001");
     expect(text).toContain("Ibrahim Kebbeh");
     expect(text).toContain("Invoice issued after the 30-day limit");
+    expect(text).toContain("Billed 7,450.00 → correct 4,450.00");
+    expect(text).toContain("46 CFR 541.6(b)(4), (b)(5), (e)(1), (e)(2)");
     const peakKb = process.resourceUsage().maxRSS;
     expect(peakKb, `peak rss ${peakKb} KiB`).toBeLessThan(512 * 1024);
     fs.writeFileSync("/tmp/harbor-report.pdf", first);
   }, 60_000);
+
+  it("labels an equal day count and the billed-to-correct total on the three-invoice report", async () => {
+    const model = harborReport(["clean", "missing_elements", "late_37"]);
+    expect(model.headline).toEqual([{ currency: "USD", amount: "1400.00" }]);
+    expect(model.other).toEqual([{ currency: "USD", amount: "1400.00" }]);
+    expect(model.stats[0]?.note).toBe("Both counts give the same total");
+    expect(model.total?.label).toBe("Billed 1,400.00 → correct 0.00");
+    const pdf = await renderReport(model);
+    fs.writeFileSync("/tmp/live-style-report.pdf", pdf);
+    const text = await pdfText(pdf);
+    expect(text).toContain("Both counts give the same total");
+    expect(text).toContain("Billed 1,400.00 → correct 0.00");
+    expect(text).not.toContain("day 0 gives");
+  }, 60_000);
 });
 
-function harborReport() {
+function harborReport(only?: readonly (typeof ids)[number][]) {
   const config = loadCustomerConfig(harborPath);
-  const loaded = ids.map((id) => load(id));
+  const chosen = only === undefined ? [...ids] : ids.filter((id) => only.includes(id));
+  const loaded = chosen.map((id) => load(id));
   const invoices = loaded.map((entry) => (entry.invoice.invoice_number === "SYN-1002" ? reviewedMissing(entry) : entry.invoice));
   const parties = Object.fromEntries(invoices.map((invoice) => [invoice.invoice_number, "sample_line"]));
   const day1 = runRules(invoices, config, "day1", parties, []);
