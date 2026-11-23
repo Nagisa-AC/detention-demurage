@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import fs from "node:fs";
+import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
+
+/** Account id returned by the local STS stub. The plan has no real AWS credentials. */
+const portalAccountId = "123456789012";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const infra = path.join(repoRoot, "infra");
@@ -16,9 +20,10 @@ type Change = {
   change: { after: Record<string, unknown> | null; after_unknown?: unknown };
 };
 
-let plan: { resource_changes?: Change[] };
+let plan: { resource_changes?: Change[]; configuration?: PlanConfiguration };
 
-beforeAll(() => {
+beforeAll(async () => {
+  const sts = await startSts(portalAccountId);
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     AWS_ACCESS_KEY_ID: "testing",
@@ -26,35 +31,36 @@ beforeAll(() => {
     AWS_REGION: "us-east-2",
     AWS_DEFAULT_REGION: "us-east-2",
     AWS_EC2_METADATA_DISABLED: "true",
+    AWS_ENDPOINT_URL_STS: sts.url,
     TF_IN_AUTOMATION: "1",
   };
   delete env.AWS_SESSION_TOKEN;
   delete env.AWS_PROFILE;
-  execFileSync("terraform", ["init", "-backend=false", "-input=false", "-no-color"], {
-    cwd: infra,
-    env,
-    stdio: "pipe",
-  });
-  execFileSync(
-    "terraform",
-    [
-      "plan",
-      "-refresh=false",
-      "-input=false",
-      "-no-color",
-      `-out=${planFile}`,
-      "-var=bucket_name=dd-recovery-plan-test",
-      "-var=upload_origin=https://detention-demurage.vercel.app",
-      "-var=vpc_id=vpc-0123456789abcdef0",
-      "-var=subnet_id=subnet-0123456789abcdef0",
-      "-var=ami_id=ami-0123456789abcdef0",
-      "-var=portal_host=portal.example.com",
-      "-var=portal_email_from=codes@example.com",
-    ],
-    { cwd: infra, env, stdio: "pipe" },
-  );
-  const shown = execFileSync("terraform", ["show", "-json", planFile], { cwd: infra, env, encoding: "utf8" });
-  plan = JSON.parse(shown) as { resource_changes?: Change[] };
+  try {
+    await terraform(["init", "-backend=false", "-input=false", "-no-color"], env);
+    await terraform(
+      [
+        "plan",
+        "-lock=false",
+        "-refresh=false",
+        "-input=false",
+        "-no-color",
+        `-out=${planFile}`,
+        "-var=bucket_name=dd-recovery-plan-test",
+        "-var=upload_origin=https://detention-demurage.vercel.app",
+        "-var=vpc_id=vpc-0123456789abcdef0",
+        "-var=subnet_id=subnet-0123456789abcdef0",
+        "-var=ami_id=ami-0123456789abcdef0",
+        "-var=portal_host=portal.example.com",
+        "-var=portal_email_from=codes@example.com",
+      ],
+      env,
+    );
+    const shown = await terraform(["show", "-json", planFile], env);
+    plan = JSON.parse(shown) as { resource_changes?: Change[]; configuration?: PlanConfiguration };
+  } finally {
+    await closeServer(sts.server);
+  }
 }, 180_000);
 
 describe("terraform plan", () => {
@@ -208,11 +214,8 @@ describe("terraform plan", () => {
     const email = block(pool, "email_configuration");
     expect(email.email_sending_account).toBe("DEVELOPER");
     expect(email.from_email_address).toBe("codes@example.com");
-    const emailUnknown = block(unknown("aws_cognito_user_pool", "portal"), "email_configuration");
-    expect(emailUnknown.source_arn).toBe(true);
-    expect(fs.readFileSync(path.join(infra, "portal-cognito.tf"), "utf8")).toContain(
-      "source_arn            = aws_ses_email_identity.portal.arn",
-    );
+    expect(email.source_arn).toBe(`arn:aws:ses:us-east-2:${portalAccountId}:identity/codes@example.com`);
+    expect(portalSesPolicyResources()).toEqual(["local.portal_ses_identity_arn"]);
     expect(resource("aws_ses_email_identity", "portal").email).toBe("codes@example.com");
     const sesPolicy = resource("aws_ses_identity_policy", "portal_cognito");
     expect(sesPolicy.name).toBe("dd-portal-cognito-send");
@@ -247,6 +250,69 @@ describe("terraform plan", () => {
     expect(postgres).toMatchObject({ to_port: 5432, protocol: "tcp", cidr_blocks: ["0.0.0.0/0"] });
   });
 });
+
+type PlanConfiguration = {
+  root_module?: {
+    resources?: { type: string; name: string; expressions?: Record<string, unknown> }[];
+  };
+};
+
+function terraform(args: string[], env: NodeJS.ProcessEnv): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("terraform", args, { cwd: infra, env, timeout: 60_000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || error.message));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+function startSts(accountId: string): Promise<{ server: Server; url: string }> {
+  const body = `<?xml version="1.0" encoding="UTF-8"?>
+<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
+  <GetCallerIdentityResult>
+    <Arn>arn:aws:iam::${accountId}:user/terraform-plan</Arn>
+    <UserId>AIDAAAAAAAAAAAAAAAAAA</UserId>
+    <Account>${accountId}</Account>
+  </GetCallerIdentityResult>
+  <ResponseMetadata>
+    <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
+  </ResponseMetadata>
+</GetCallerIdentityResponse>`;
+  const server = createServer((request, response) => {
+    request.resume();
+    response.writeHead(200, { "Content-Type": "text/xml", "Content-Length": Buffer.byteLength(body) });
+    response.end(body);
+  });
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("STS stub failed to listen");
+      resolve({ server, url: `http://127.0.0.1:${address.port}` });
+    });
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  server.closeAllConnections();
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
+function portalSesPolicyResources(): string[] {
+  const found = plan.configuration?.root_module?.resources?.find(
+    (item) => item.type === "aws_iam_policy_document" && item.name === "portal_ses",
+  );
+  const statement = found?.expressions?.statement;
+  const firstStatement = Array.isArray(statement) ? statement[0] : undefined;
+  if (firstStatement === null || typeof firstStatement !== "object") throw new Error("missing portal SES policy");
+  const references = (firstStatement as { resources?: { references?: unknown } }).resources?.references;
+  if (!Array.isArray(references)) throw new Error("missing portal SES policy resources");
+  return references.map(String);
+}
 
 function resource(type: string, name: string): Record<string, unknown> {
   const found = (plan.resource_changes ?? []).find((change) => change.type === type && change.name === name);

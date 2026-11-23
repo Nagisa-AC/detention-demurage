@@ -18,7 +18,7 @@ resource "aws_cognito_user_pool" "portal" {
   email_configuration {
     email_sending_account = "DEVELOPER"
     from_email_address    = var.portal_email_from
-    source_arn            = aws_ses_email_identity.portal.arn
+    source_arn            = local.portal_ses_identity_arn
   }
 
   sign_in_policy {
@@ -35,6 +35,15 @@ resource "aws_ses_email_identity" "portal" {
   email = var.portal_email_from
 }
 
+# The identity's arn attribute omits the account id, and Cognito rejects that value.
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
+locals {
+  portal_ses_identity_arn = "arn:aws:ses:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:identity/${aws_ses_email_identity.portal.email}"
+}
+
 # Cognito sends as this identity. The pool ARN keeps another caller from using it.
 data "aws_iam_policy_document" "portal_ses" {
   statement {
@@ -42,7 +51,7 @@ data "aws_iam_policy_document" "portal_ses" {
     effect  = "Allow"
     actions = ["ses:SendEmail", "ses:SendRawEmail"]
 
-    resources = [aws_ses_email_identity.portal.arn]
+    resources = [local.portal_ses_identity_arn]
 
     principals {
       type        = "Service"
