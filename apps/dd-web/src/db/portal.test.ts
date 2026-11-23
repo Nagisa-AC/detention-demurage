@@ -270,21 +270,69 @@ describe("portal database", () => {
     expect(refused).toBeNull();
   });
 
-  it("refuses sign-in when the disabled check cannot see events", async () => {
+  it("refuses a disabled user and does not open tables from a session setting", async () => {
     const world = await seed();
     const enabled = await portal.query<{ id: string | null }>(`SELECT portal_customer_id('sub-a')::text AS id`);
     expect(enabled.rows[0]?.id).toBe(world.a);
-    const hiddenByFilter = await asCustomer(world.a, `SELECT portal_customer_id('sub-a')::text AS id`);
-    expect(hiddenByFilter).toEqual([{ id: null }]);
-    await owner.query(`DROP POLICY dd_portal_reader_lookup ON "AuditEvent"`);
+
+    await portal.query("BEGIN");
+    try {
+      await portal.query("SELECT set_config('portal.lookup', '1', true)");
+      await portal.query("SELECT set_config('portal.other', 'open', true)");
+      await portal.query("SELECT set_config('app.customer_id', $1, true)", [world.a]);
+      const own = await portal.query<{ invoice_number: string }>(`SELECT invoice_number FROM portal_invoice ORDER BY invoice_number`);
+      expect(own.rows.map((row) => row.invoice_number)).toEqual(["A-CHECKED", "A-OPEN", "A-RECEIVED", "A-SKIP"]);
+      const profile = await portal.query<{ display_name: string }>(`SELECT display_name FROM portal_profile`);
+      expect(profile.rows).toEqual([{ display_name: "Harbor Home Goods" }]);
+      await expectDenied(portal.query(`SELECT 1 FROM "PortalUser"`));
+    } finally {
+      await portal.query("ROLLBACK");
+    }
+    await portal.query("BEGIN");
+    try {
+      await portal.query("SELECT set_config('portal.lookup', '1', true)");
+      await expectDenied(portal.query(`SELECT 1 FROM "AuditEvent"`));
+    } finally {
+      await portal.query("ROLLBACK");
+    }
+
+    const readerCanReadUsers = await owner.query<{ allowed: boolean }>(
+      `SELECT has_table_privilege('dd_portal_reader', 'public."PortalUser"', 'SELECT') AS allowed`,
+    );
+    expect(readerCanReadUsers.rows[0]?.allowed).toBe(false);
+    await owner.query("BEGIN");
+    try {
+      await owner.query("SET LOCAL ROLE dd_portal_reader");
+      await expectDenied(owner.query(`SELECT 1 FROM "PortalUser"`));
+    } finally {
+      await owner.query("ROLLBACK");
+    }
+
+    await app.query(
+      `INSERT INTO "AuditEvent" (customer_id, actor, action, payload)
+       SELECT customer_id, 'Staff', 'portal_user_disabled', jsonb_build_object('portal_user_id', id::text)
+       FROM "PortalUser" WHERE cognito_sub = 'sub-a'`,
+    );
+    expect(await lookupPortalCustomer("sub-a")).toBeNull();
+
+    const profileA = await asCustomer(world.a, `SELECT display_name FROM portal_profile`);
+    const profileB = await asCustomer(world.b, `SELECT display_name FROM portal_profile`);
+    const open = await portal.query<{ n: number }>(`SELECT count(*)::int AS n FROM portal_profile`);
+    expect(profileA).toEqual([{ display_name: "Harbor Home Goods" }]);
+    expect(profileB).toEqual([{ display_name: "Sample Line Logistics" }]);
+    expect(open.rows[0]?.n).toBe(0);
+    const staff = await app.query<{ n: number }>(`SELECT count(*)::int AS n FROM "Customer"`);
+    expect(staff.rows[0]?.n).toBe(3);
+
+    await owner.query(`DROP POLICY dd_portal_lookup_read ON "AuditEvent"`);
     try {
       const refused = await portal.query<{ id: string | null }>(`SELECT portal_customer_id('sub-a')::text AS id`);
       expect(refused.rows[0]?.id).toBeNull();
     } finally {
       await owner.query(
-        `CREATE POLICY dd_portal_reader_lookup ON "AuditEvent"
-           FOR SELECT TO dd_portal_reader
-           USING (current_setting('portal.lookup', true) = '1')`,
+        `CREATE POLICY dd_portal_lookup_read ON "AuditEvent"
+           FOR SELECT TO dd_portal_lookup
+           USING (true)`,
       );
     }
   });
@@ -372,12 +420,17 @@ describe("portal database", () => {
     );
     for (const row of options.rows) expect(row.reloptions ?? [], row.relname).toContain("security_invoker=true");
     const roleSql = fs.readFileSync(path.join(webRoot, "prisma/create-portal-role.sql"), "utf8");
+    const lookupSql = fs.readFileSync(path.join(webRoot, "prisma/create-portal-lookup-role.sql"), "utf8");
     expect(roleSql).toContain("CREATE ROLE dd_portal LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT");
-    const statements = roleSql
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("--"))
-      .join("\n");
-    expect(statements.toLowerCase()).not.toContain("password");
+    expect(roleSql).toContain("CREATE ROLE dd_portal_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT");
+    expect(lookupSql).toContain("CREATE ROLE dd_portal_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT");
+    for (const sql of [roleSql, lookupSql]) {
+      const statements = sql
+        .split("\n")
+        .filter((line) => !line.trim().startsWith("--"))
+        .join("\n");
+      expect(statements.toLowerCase()).not.toContain("password");
+    }
   });
 
   async function asCustomer(customerId: string, text: string): Promise<Record<string, unknown>[]> {
@@ -592,7 +645,7 @@ async function ensurePortalRoles(url: string): Promise<void> {
   await client.connect();
   try {
     const existing = await client.query<{ rolname: string }>(
-      `SELECT rolname FROM pg_roles WHERE rolname IN ('dd_app', 'dd_portal', 'dd_portal_reader')`,
+      `SELECT rolname FROM pg_roles WHERE rolname IN ('dd_app', 'dd_portal', 'dd_portal_reader', 'dd_portal_lookup')`,
     );
     const names = new Set(existing.rows.map((row) => row.rolname));
     if (!names.has("dd_app")) await createRole(client, `CREATE ROLE dd_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
@@ -600,7 +653,11 @@ async function ensurePortalRoles(url: string): Promise<void> {
     if (!names.has("dd_portal_reader")) {
       await createRole(client, `CREATE ROLE dd_portal_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
     }
+    if (!names.has("dd_portal_lookup")) {
+      await createRole(client, `CREATE ROLE dd_portal_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    }
     await client.query(`GRANT dd_portal_reader TO CURRENT_USER`);
+    await client.query(`GRANT dd_portal_lookup TO CURRENT_USER`);
   } finally {
     await client.end();
   }

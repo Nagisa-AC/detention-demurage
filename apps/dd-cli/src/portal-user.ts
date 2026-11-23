@@ -33,6 +33,21 @@ export function createUserInput(poolId: string, email: string, temporaryPassword
   };
 }
 
+/** Permanent moves the user to CONFIRMED. The password is not returned to the caller. */
+export function setPasswordInput(poolId: string, email: string, password: string): {
+  UserPoolId: string;
+  Username: string;
+  Password: string;
+  Permanent: true;
+} {
+  return {
+    UserPoolId: poolId,
+    Username: email,
+    Password: password,
+    Permanent: true,
+  };
+}
+
 export function oneTimePassword(): string {
   return `${randomBytes(24).toString("base64url")}Aa1!`;
 }

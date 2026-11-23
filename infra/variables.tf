@@ -34,6 +34,16 @@ variable "ami_id" {
   description = "Amazon Linux 2023 arm64 AMI in us-east-2. Look up the current id at apply; do not bake an image."
 }
 
+variable "portal_email_from" {
+  type        = string
+  description = "Verified SES address Cognito uses to send portal email codes. No display name."
+
+  validation {
+    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.portal_email_from))
+    error_message = "portal_email_from must be one email address."
+  }
+}
+
 variable "portal_host" {
   type        = string
   description = "Hostname of the future customer portal. Passkeys are bound to this host. No scheme, no path, no wildcard."

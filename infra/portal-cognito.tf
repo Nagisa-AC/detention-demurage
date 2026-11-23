@@ -14,8 +14,11 @@ resource "aws_cognito_user_pool" "portal" {
     allow_admin_create_user_only = true
   }
 
+  # EMAIL_OTP requires SES. COGNITO_DEFAULT cannot send that code.
   email_configuration {
-    email_sending_account = "COGNITO_DEFAULT"
+    email_sending_account = "DEVELOPER"
+    from_email_address    = var.portal_email_from
+    source_arn            = aws_ses_email_identity.portal.arn
   }
 
   sign_in_policy {
@@ -26,6 +29,38 @@ resource "aws_cognito_user_pool" "portal" {
     relying_party_id  = var.portal_host
     user_verification = "required"
   }
+}
+
+resource "aws_ses_email_identity" "portal" {
+  email = var.portal_email_from
+}
+
+# Cognito sends as this identity. The pool ARN keeps another caller from using it.
+data "aws_iam_policy_document" "portal_ses" {
+  statement {
+    sid     = "CognitoSendPortalEmail"
+    effect  = "Allow"
+    actions = ["ses:SendEmail", "ses:SendRawEmail"]
+
+    resources = [aws_ses_email_identity.portal.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["email.cognito-idp.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cognito_user_pool.portal.arn]
+    }
+  }
+}
+
+resource "aws_ses_identity_policy" "portal_cognito" {
+  name     = "dd-portal-cognito-send"
+  identity = aws_ses_email_identity.portal.email
+  policy   = data.aws_iam_policy_document.portal_ses.json
 }
 
 resource "aws_cognito_user_pool_client" "portal" {

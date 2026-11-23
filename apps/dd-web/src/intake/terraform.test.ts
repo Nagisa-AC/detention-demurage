@@ -13,7 +13,7 @@ const planFile = path.join(os.tmpdir(), `dd-tf-${process.pid}.tfplan`);
 type Change = {
   type: string;
   name: string;
-  change: { after: Record<string, unknown> | null };
+  change: { after: Record<string, unknown> | null; after_unknown?: unknown };
 };
 
 let plan: { resource_changes?: Change[] };
@@ -49,6 +49,7 @@ beforeAll(() => {
       "-var=subnet_id=subnet-0123456789abcdef0",
       "-var=ami_id=ami-0123456789abcdef0",
       "-var=portal_host=portal.example.com",
+      "-var=portal_email_from=codes@example.com",
     ],
     { cwd: infra, env, stdio: "pipe" },
   );
@@ -204,6 +205,27 @@ describe("terraform plan", () => {
     const passkey = block(pool, "web_authn_configuration");
     expect(passkey.relying_party_id).toBe("portal.example.com");
     expect(passkey.user_verification).toBe("required");
+    const email = block(pool, "email_configuration");
+    expect(email.email_sending_account).toBe("DEVELOPER");
+    expect(email.from_email_address).toBe("codes@example.com");
+    const emailUnknown = block(unknown("aws_cognito_user_pool", "portal"), "email_configuration");
+    expect(emailUnknown.source_arn).toBe(true);
+    expect(fs.readFileSync(path.join(infra, "portal-cognito.tf"), "utf8")).toContain(
+      "source_arn            = aws_ses_email_identity.portal.arn",
+    );
+    expect(resource("aws_ses_email_identity", "portal").email).toBe("codes@example.com");
+    const sesPolicy = resource("aws_ses_identity_policy", "portal_cognito");
+    expect(sesPolicy.name).toBe("dd-portal-cognito-send");
+    expect(sesPolicy.identity).toBe("codes@example.com");
+    expect(unknown("aws_ses_identity_policy", "portal_cognito").policy).toBe(true);
+    const ses = fs.readFileSync(path.join(infra, "portal-cognito.tf"), "utf8");
+    expect(ses).toContain("ses:SendEmail");
+    expect(ses).toContain("ses:SendRawEmail");
+    expect(ses).toContain("email.cognito-idp.amazonaws.com");
+    expect(ses).toContain("aws:SourceArn");
+    const readme = fs.readFileSync(path.join(infra, "README.md"), "utf8");
+    expect(readme).toContain("sandbox");
+    expect(readme).toContain("production access");
     const client = resource("aws_cognito_user_pool_client", "portal");
     expect(client.name).toBe("dd-portal");
     expect(client.generate_secret).toBe(false);
@@ -230,6 +252,13 @@ function resource(type: string, name: string): Record<string, unknown> {
   const found = (plan.resource_changes ?? []).find((change) => change.type === type && change.name === name);
   if (found?.change.after == null) throw new Error(`missing ${type}.${name}`);
   return found.change.after;
+}
+
+function unknown(type: string, name: string): Record<string, unknown> {
+  const found = (plan.resource_changes ?? []).find((change) => change.type === type && change.name === name);
+  const value = found?.change.after_unknown;
+  if (value === null || typeof value !== "object") throw new Error(`missing unknown ${type}.${name}`);
+  return value as Record<string, unknown>;
 }
 
 function first(value: unknown): Record<string, unknown> {

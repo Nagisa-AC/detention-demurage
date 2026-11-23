@@ -579,12 +579,31 @@ async function ensureAppRole(url: string): Promise<void> {
   const client = new Client({ connectionString: url });
   await client.connect();
   try {
-    const existing = await client.query("SELECT 1 FROM pg_roles WHERE rolname = 'dd_app'");
-    if ((existing.rowCount ?? 0) > 0) return;
-    const sql = fs.readFileSync(path.join(webRoot, "prisma/create-app-role.sql"), "utf8");
-    await client.query(sql);
+    const existing = await client.query<{ rolname: string }>(
+      `SELECT rolname FROM pg_roles WHERE rolname IN ('dd_app', 'dd_portal', 'dd_portal_reader', 'dd_portal_lookup')`,
+    );
+    const names = new Set(existing.rows.map((row) => row.rolname));
+    if (!names.has("dd_app")) await client.query(fs.readFileSync(path.join(webRoot, "prisma/create-app-role.sql"), "utf8"));
+    if (!names.has("dd_portal")) await createRole(client, `CREATE ROLE dd_portal LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    if (!names.has("dd_portal_reader")) {
+      await createRole(client, `CREATE ROLE dd_portal_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    }
+    if (!names.has("dd_portal_lookup")) {
+      await createRole(client, `CREATE ROLE dd_portal_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    }
+    await client.query(`GRANT dd_portal_reader TO CURRENT_USER`);
+    await client.query(`GRANT dd_portal_lookup TO CURRENT_USER`);
   } finally {
     await client.end();
+  }
+}
+
+async function createRole(client: Client, sql: string): Promise<void> {
+  try {
+    await client.query(sql);
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "42710") return;
+    throw error;
   }
 }
 

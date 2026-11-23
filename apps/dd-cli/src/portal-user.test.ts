@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createUserInput, runPortalUser, type PortalUserCognito, type PortalUserStore } from "./portal-user.js";
+import { createUserInput, runPortalUser, setPasswordInput, type PortalUserCognito, type PortalUserStore } from "./portal-user.js";
 
 const customerId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -43,10 +43,19 @@ describe("portal-user add", () => {
     expect(stdout.join("")).not.toContain("cognito-sub");
   });
 
-  it("suppresses the invitation email", () => {
-    const input = createUserInput("pool", "a@example.com", "Aa1!secret");
-    expect(input.MessageAction).toBe("SUPPRESS");
-    expect(input.TemporaryPassword).toBe("Aa1!secret");
-    expect(JSON.stringify({ MessageAction: input.MessageAction })).not.toContain("Aa1!secret");
+  it("suppresses the invitation and confirms the user without keeping the password", () => {
+    const password = "Aa1!secret";
+    const created = createUserInput("pool", "a@example.com", password);
+    expect(created.MessageAction).toBe("SUPPRESS");
+    const confirmed = setPasswordInput("pool", "a@example.com", password);
+    expect(confirmed.Permanent).toBe(true);
+    expect(confirmed.Password).toBe(password);
+    const logged = JSON.stringify({
+      MessageAction: created.MessageAction,
+      UserPoolId: confirmed.UserPoolId,
+      Username: confirmed.Username,
+      Permanent: confirmed.Permanent,
+    });
+    expect(logged).not.toContain(password);
   });
 });

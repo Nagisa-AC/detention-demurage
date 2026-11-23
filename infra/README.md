@@ -58,10 +58,14 @@ If an older `terraform.tfvars` still has `aws_account_id`, `vercel_team_slug`, `
 
 The customer pool is `dd-portal` in us-east-2, separate from the staff pool. Only an admin can create users. Sign-in is a passkey, with an email one-time code as the other first factor. The AWS provider expresses both, so there is no console step for them. The app client has no secret. Set `portal_host` in `terraform.tfvars` to the portal hostname before you plan. Passkeys are bound to that host.
 
-Run these as the migration owner, then plan. CI plans and does not apply.
+Email codes use Amazon SES. `portal_email_from` is the sender address, and the pool's email configuration is `DEVELOPER` with that identity. Cognito is allowed `ses:SendEmail` and `ses:SendRawEmail` on that identity only, and only when the source is this user pool.
+
+SES starts in the sandbox. Verify the sender address first, and verify every test recipient before a code can arrive. Each verification is one click in an email from Amazon. Request production access, and move the sender to a domain identity, before real customers use the portal.
+
+Run these as the migration owner, then plan. `create-portal-role.sql` has already been run. `create-portal-lookup-role.sql` adds `dd_portal_lookup`. CI plans and does not apply.
 
 ```sh
-psql "$DATABASE_URL" -f apps/dd-web/prisma/create-portal-role.sql
+psql "$DATABASE_URL" -f apps/dd-web/prisma/create-portal-lookup-role.sql
 pnpm --filter dd-web exec prisma migrate deploy
 terraform -chdir=infra plan
 ```
