@@ -140,72 +140,174 @@ CREATE POLICY dd_portal_customer ON "ReportExport"
   FOR SELECT TO dd_portal, dd_portal_reader
   USING (customer_id = app_customer_id());
 
+-- Checked means the invoice is in the latest published rules run, and no newer
+-- finished run is still unpublished. Anything else the staff are still working
+-- on is Being checked. Received means the invoice has not entered a rules run.
+-- disputable is that run's counted total, once per invoice, and only when Checked.
 CREATE FUNCTION portal_invoice_rows()
-RETURNS TABLE (invoice_number text, invoice_date date, currency text, status text)
+RETURNS TABLE (invoice_number text, invoice_date date, currency text, status text, disputable numeric)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $fn$
 BEGIN
   RETURN QUERY
-  SELECT i.invoice_number::text,
-         i.invoice_date,
-         i.currency::text,
-         CASE
-           WHEN EXISTS (
-             SELECT 1 FROM "ProcessingRun" r
-             WHERE r.customer_id = i.customer_id
-               AND r.finished_at IS NULL
-               AND (
-                 r.invoice_id = i.id
-                 OR r.document_id = i.document_id
-                 OR r.kind IN ('rules', 'report')
-               )
-           ) THEN 'Being checked'
-           WHEN EXISTS (
-             SELECT 1 FROM "ProcessingRun" r
-             WHERE r.customer_id = i.customer_id
-               AND r.kind = 'rules'
-               AND r.finished_at IS NOT NULL
-               AND r.page_records->>'failed' = 'true'
-               AND r.id = (
-                 SELECT r2.id FROM "ProcessingRun" r2
-                 WHERE r2.customer_id = i.customer_id AND r2.kind = 'rules'
-                 ORDER BY r2.started_at DESC, r2.id DESC
-                 LIMIT 1
-               )
-           ) THEN 'Needs attention'
-           WHEN i.unresolved IS NOT NULL
-             AND jsonb_typeof(i.unresolved) = 'array'
-             AND jsonb_array_length(i.unresolved) > 0
-           THEN 'Needs attention'
-           WHEN EXISTS (
-             SELECT 1 FROM "ProcessingRun" r
-             WHERE r.customer_id = i.customer_id
-               AND r.kind = 'rules'
-               AND r.finished_at IS NOT NULL
-               AND COALESCE(r.page_records->>'failed', 'false') <> 'true'
+  WITH published AS (
+    SELECT DISTINCT ON (r.customer_id)
+      r.customer_id,
+      r.id,
+      r.started_at,
+      r.page_records
+    FROM "ProcessingRun" r
+    WHERE r.kind = 'rules'
+      AND r.finished_at IS NOT NULL
+      AND COALESCE(r.page_records->>'failed', 'false') <> 'true'
+      AND EXISTS (
+        SELECT 1 FROM "AuditEvent" e
+        WHERE e.customer_id = r.customer_id
+          AND e.action = 'results_published'
+          AND e.payload->>'processing_run_id' = r.id::text
+      )
+    ORDER BY r.customer_id, r.started_at DESC, r.id DESC
+  ),
+  marked AS (
+    SELECT i.invoice_number,
+           i.invoice_date,
+           i.currency,
+           i.id,
+           p.page_records AS published_records,
+           CASE
+             WHEN p.id IS NOT NULL
                AND EXISTS (
                  SELECT 1
-                 FROM jsonb_array_elements_text(COALESCE(r.page_records->'invoice_ids', '[]'::jsonb)) AS listed(invoice_id)
+                 FROM jsonb_array_elements_text(COALESCE(p.page_records->'invoice_ids', '[]'::jsonb)) AS listed(invoice_id)
                  WHERE listed.invoice_id = i.id::text
                )
-           ) THEN 'Checked'
-           ELSE 'Received'
-         END::text
-  FROM "Invoice" i
-  ORDER BY i.invoice_number, i.id;
+               AND NOT EXISTS (
+                 SELECT 1 FROM "ProcessingRun" newer
+                 WHERE newer.customer_id = i.customer_id
+                   AND newer.kind = 'rules'
+                   AND newer.finished_at IS NOT NULL
+                   AND (newer.started_at, newer.id) > (p.started_at, p.id)
+                   AND EXISTS (
+                     SELECT 1
+                     FROM jsonb_array_elements_text(COALESCE(newer.page_records->'invoice_ids', '[]'::jsonb)) AS listed(invoice_id)
+                     WHERE listed.invoice_id = i.id::text
+                   )
+                   AND NOT EXISTS (
+                     SELECT 1 FROM "AuditEvent" e
+                     WHERE e.customer_id = newer.customer_id
+                       AND e.action = 'results_published'
+                       AND e.payload->>'processing_run_id' = newer.id::text
+                   )
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM "ProcessingRun" latest
+                 WHERE latest.customer_id = i.customer_id
+                   AND latest.kind = 'rules'
+                   AND latest.finished_at IS NOT NULL
+                   AND latest.page_records->>'failed' = 'true'
+                   AND latest.id = (
+                     SELECT r2.id FROM "ProcessingRun" r2
+                     WHERE r2.customer_id = i.customer_id AND r2.kind = 'rules'
+                     ORDER BY r2.started_at DESC, r2.id DESC
+                     LIMIT 1
+                   )
+               )
+             THEN 'Checked'
+             WHEN EXISTS (
+               SELECT 1 FROM "ProcessingRun" r
+               WHERE r.customer_id = i.customer_id
+                 AND r.finished_at IS NULL
+                 AND (
+                   r.invoice_id = i.id
+                   OR r.document_id = i.document_id
+                   OR r.kind IN ('rules', 'report')
+                 )
+             )
+             OR (
+               i.unresolved IS NOT NULL
+               AND jsonb_typeof(i.unresolved) = 'array'
+               AND jsonb_array_length(i.unresolved) > 0
+             )
+             OR EXISTS (
+               SELECT 1 FROM "ProcessingRun" latest
+               WHERE latest.customer_id = i.customer_id
+                 AND latest.kind = 'rules'
+                 AND latest.finished_at IS NOT NULL
+                 AND latest.page_records->>'failed' = 'true'
+                 AND latest.id = (
+                   SELECT r2.id FROM "ProcessingRun" r2
+                   WHERE r2.customer_id = i.customer_id AND r2.kind = 'rules'
+                   ORDER BY r2.started_at DESC, r2.id DESC
+                   LIMIT 1
+                 )
+             )
+             OR EXISTS (
+               SELECT 1 FROM "ProcessingRun" r
+               WHERE r.customer_id = i.customer_id
+                 AND r.kind = 'rules'
+                 AND r.finished_at IS NOT NULL
+                 AND EXISTS (
+                   SELECT 1
+                   FROM jsonb_array_elements_text(COALESCE(r.page_records->'invoice_ids', '[]'::jsonb)) AS listed(invoice_id)
+                   WHERE listed.invoice_id = i.id::text
+                 )
+             )
+             THEN 'Being checked'
+             ELSE 'Received'
+           END AS status
+    FROM "Invoice" i
+    LEFT JOIN published p ON p.customer_id = i.customer_id
+  )
+  SELECT marked.invoice_number::text,
+         marked.invoice_date,
+         marked.currency::text,
+         marked.status::text,
+         CASE
+           WHEN marked.status = 'Checked' THEN (
+             SELECT (item->>'disputable')::numeric
+             FROM jsonb_array_elements(
+               COALESCE(
+                 marked.published_records->'invoices'->portal_chosen_convention(marked.published_records),
+                 '[]'::jsonb
+               )
+             ) AS item
+             WHERE item->>'invoice_id' = marked.id::text
+               AND item->>'do_not_pursue' IS DISTINCT FROM 'true'
+               AND COALESCE(item->>'superseded_by', '') = ''
+               AND item->>'disputable' ~ '^[0-9]+(\.[0-9]+)?$'
+             LIMIT 1
+           )
+           ELSE NULL::numeric
+         END
+  FROM marked
+  ORDER BY marked.invoice_number, marked.id;
 END
 $fn$;
 
 CREATE FUNCTION portal_finding_rows()
-RETURNS TABLE (invoice_number text, title text, plain_text text, counted_amount numeric, currency text)
+RETURNS TABLE (invoice_number text, title text, plain_text text, currency text)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $fn$
 BEGIN
   RETURN QUERY
+  WITH published AS (
+    SELECT DISTINCT ON (r.customer_id) r.customer_id, r.id, r.page_records
+    FROM "ProcessingRun" r
+    WHERE r.kind = 'rules'
+      AND r.finished_at IS NOT NULL
+      AND COALESCE(r.page_records->>'failed', 'false') <> 'true'
+      AND EXISTS (
+        SELECT 1 FROM "AuditEvent" e
+        WHERE e.customer_id = r.customer_id
+          AND e.action = 'results_published'
+          AND e.payload->>'processing_run_id' = r.id::text
+      )
+    ORDER BY r.customer_id, r.started_at DESC, r.id DESC
+  )
   SELECT i.invoice_number::text,
          CASE f.rule
            WHEN 'R1' THEN 'Missing information'
@@ -217,28 +319,19 @@ BEGIN
            ELSE 'Invoice correction'
          END::text,
          regexp_replace(f.explain, '\mR[1-5]\M', '', 'g')::text,
-         (counted.item->>'disputable')::numeric,
          f.currency::text
   FROM "Finding" f
+  JOIN published p ON p.customer_id = f.customer_id AND p.id = f.processing_run_id
   JOIN "Invoice" i ON i.id = f.invoice_id AND i.customer_id = f.customer_id
-  JOIN "ProcessingRun" r ON r.id = f.processing_run_id AND r.customer_id = f.customer_id
-  JOIN LATERAL (
-    SELECT item
-    FROM jsonb_array_elements(COALESCE(r.page_records->'invoices'->portal_chosen_convention(r.page_records), '[]'::jsonb)) AS item
-    WHERE item->>'invoice_id' = f.invoice_id::text
-      AND item->>'do_not_pursue' IS DISTINCT FROM 'true'
-      AND COALESCE(item->>'superseded_by', '') = ''
-      AND item->>'disputable' ~ '^[0-9]+(\.[0-9]+)?$'
-  ) AS counted ON true
-  WHERE r.kind = 'rules'
-    AND r.finished_at IS NOT NULL
-    AND COALESCE(r.page_records->>'failed', 'false') <> 'true'
-    AND f.convention = portal_chosen_convention(r.page_records)
+  WHERE f.convention = portal_chosen_convention(p.page_records)
     AND EXISTS (
-      SELECT 1 FROM "AuditEvent" e
-      WHERE e.customer_id = f.customer_id
-        AND e.action = 'results_published'
-        AND e.payload->>'processing_run_id' = r.id::text
+      SELECT 1
+      FROM jsonb_array_elements(
+        COALESCE(p.page_records->'invoices'->portal_chosen_convention(p.page_records), '[]'::jsonb)
+      ) AS item
+      WHERE item->>'invoice_id' = f.invoice_id::text
+        AND item->>'do_not_pursue' IS DISTINCT FROM 'true'
+        AND COALESCE(item->>'superseded_by', '') = ''
     )
   ORDER BY i.invoice_number, f.explain, f.id;
 END
@@ -292,10 +385,10 @@ ALTER FUNCTION portal_report_rows() OWNER TO dd_portal_reader;
 REVOKE CREATE ON SCHEMA public FROM dd_portal_reader;
 
 CREATE VIEW portal_invoice WITH (security_invoker = true) AS
-SELECT invoice_number, invoice_date, currency, status FROM portal_invoice_rows();
+SELECT invoice_number, invoice_date, currency, status, disputable FROM portal_invoice_rows();
 
 CREATE VIEW portal_finding WITH (security_invoker = true) AS
-SELECT invoice_number, title, plain_text, counted_amount, currency FROM portal_finding_rows();
+SELECT invoice_number, title, plain_text, currency FROM portal_finding_rows();
 
 CREATE VIEW portal_report WITH (security_invoker = true) AS
 SELECT report_number, issued_on, total_amount, currency, storage_key, csv_key FROM portal_report_rows();

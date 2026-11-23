@@ -24,7 +24,7 @@ resource "aws_cognito_user_pool" "portal" {
 
   web_authn_configuration {
     relying_party_id  = var.portal_host
-    user_verification = "preferred"
+    user_verification = "required"
   }
 }
 

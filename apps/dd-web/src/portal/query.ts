@@ -6,13 +6,13 @@ export type PortalInvoice = {
   invoice_date: string | null;
   currency: string;
   status: string;
+  disputable: string | null;
 };
 
 export type PortalFinding = {
   invoice_number: string;
   title: string;
   plain_text: string;
-  counted_amount: string;
   currency: string;
 };
 
@@ -48,14 +48,15 @@ export async function withPortalQuery<T>(customer: PortalCustomer, run: (views: 
       invoices: async () =>
         (
           await client.query<PortalInvoice>(
-            `SELECT invoice_number, invoice_date::text AS invoice_date, currency, status
+            `SELECT invoice_number, invoice_date::text AS invoice_date, currency, status,
+                    disputable::text AS disputable
              FROM portal_invoice ORDER BY invoice_number`,
           )
         ).rows,
       findings: async () =>
         (
           await client.query<PortalFinding>(
-            `SELECT invoice_number, title, plain_text, counted_amount::text AS counted_amount, currency
+            `SELECT invoice_number, title, plain_text, currency
              FROM portal_finding ORDER BY invoice_number, plain_text`,
           )
         ).rows,

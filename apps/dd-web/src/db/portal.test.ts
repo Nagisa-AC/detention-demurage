@@ -55,16 +55,19 @@ describe("portal database", () => {
 
   it("shows one customer's rows and none of the other's", async () => {
     const world = await seed();
-    const invoices = await asCustomer(world.a, `SELECT invoice_number, status FROM portal_invoice ORDER BY invoice_number`);
+    const invoices = await asCustomer(
+      world.a,
+      `SELECT invoice_number, status, disputable::text AS disputable FROM portal_invoice ORDER BY invoice_number`,
+    );
     expect(invoices).toEqual([
-      { invoice_number: "A-CHECKED", status: "Checked" },
-      { invoice_number: "A-OPEN", status: "Being checked" },
-      { invoice_number: "A-RECEIVED", status: "Received" },
-      { invoice_number: "A-SKIP", status: "Checked" },
+      { invoice_number: "A-CHECKED", status: "Checked", disputable: "8.00" },
+      { invoice_number: "A-OPEN", status: "Being checked", disputable: null },
+      { invoice_number: "A-RECEIVED", status: "Received", disputable: null },
+      { invoice_number: "A-SKIP", status: "Checked", disputable: null },
     ]);
     const findings = await asCustomer(
       world.a,
-      `SELECT invoice_number, title, plain_text, counted_amount::text AS counted_amount
+      `SELECT invoice_number, title, plain_text
        FROM portal_finding ORDER BY invoice_number, plain_text`,
     );
     expect(findings).toEqual([
@@ -72,7 +75,6 @@ describe("portal database", () => {
         invoice_number: "A-CHECKED",
         title: "Missing information",
         plain_text: "Checked against .",
-        counted_amount: "8.00",
       },
     ]);
     expect(JSON.stringify(findings)).not.toMatch(/\bR[1-5]\b/);
@@ -85,14 +87,15 @@ describe("portal database", () => {
       { report_number: "TMR-2026-001", total_amount: "8.00", currency: "USD", storage_key: "reports/a.pdf" },
     ]);
 
-    const other = await asCustomer(world.b, `SELECT invoice_number FROM portal_invoice ORDER BY invoice_number`);
-    expect(other.map((row) => row.invoice_number)).toEqual(["B-ATTENTION", "B-CHECKED"]);
+    const other = await asCustomer(world.b, `SELECT invoice_number, status FROM portal_invoice ORDER BY invoice_number`);
+    expect(other).toEqual([
+      { invoice_number: "B-ATTENTION", status: "Being checked" },
+      { invoice_number: "B-CHECKED", status: "Being checked" },
+    ]);
     const hidden = await asCustomer(world.b, `SELECT count(*)::int AS n FROM portal_finding`);
     expect(hidden[0]?.n).toBe(0);
-    const attention = await asCustomer(world.b, `SELECT status FROM portal_invoice WHERE invoice_number = 'B-ATTENTION'`);
-    expect(attention[0]?.status).toBe("Needs attention");
     const failed = await asCustomer(world.c, `SELECT status FROM portal_invoice`);
-    expect(failed).toEqual([{ status: "Needs attention" }]);
+    expect(failed).toEqual([{ status: "Being checked" }]);
   });
 
   it("returns nothing when no customer is set", async () => {
@@ -131,10 +134,15 @@ describe("portal database", () => {
     await expectDenied(portal.query(`DELETE FROM portal_report`), ["42501", "55000"]);
   });
 
-  it("hides findings until the rules run is published, then shows the counted amount", async () => {
+  it("hides findings until the rules run is published, then shows the invoice amount", async () => {
     const world = await seed();
-    const before = await asCustomer(world.b, `SELECT invoice_number, counted_amount::text AS counted_amount FROM portal_finding`);
+    const before = await asCustomer(world.b, `SELECT invoice_number, plain_text FROM portal_finding`);
     expect(before).toEqual([]);
+    const unpublished = await asCustomer(
+      world.b,
+      `SELECT status, disputable::text AS disputable FROM portal_invoice WHERE invoice_number = 'B-CHECKED'`,
+    );
+    expect(unpublished).toEqual([{ status: "Being checked", disputable: null }]);
     const published = await recordPublication(appSql(), world.b, "Reviewer");
     expect(published).toBe(true);
     const again = await recordPublication(appSql(), world.b, "Reviewer");
@@ -145,11 +153,13 @@ describe("portal database", () => {
       [world.b],
     );
     expect(event.rows).toEqual([{ actor: "Reviewer", run_id: world.bRun }]);
-    const after = await asCustomer(
+    const after = await asCustomer(world.b, `SELECT invoice_number, plain_text FROM portal_finding`);
+    expect(after).toEqual([{ invoice_number: "B-CHECKED", plain_text: "Billed twice." }]);
+    const checked = await asCustomer(
       world.b,
-      `SELECT invoice_number, counted_amount::text AS counted_amount, plain_text FROM portal_finding`,
+      `SELECT status, disputable::text AS disputable FROM portal_invoice WHERE invoice_number = 'B-CHECKED'`,
     );
-    expect(after).toEqual([{ invoice_number: "B-CHECKED", counted_amount: "8.00", plain_text: "Billed twice." }]);
+    expect(checked).toEqual([{ status: "Checked", disputable: "8.00" }]);
     const skipped = await asCustomer(world.a, `SELECT plain_text FROM portal_finding`);
     expect(skipped.map((row) => row.plain_text)).not.toContain("Do not show this.");
     expect(skipped.map((row) => row.plain_text)).not.toContain("Day zero only.");
@@ -228,6 +238,31 @@ describe("portal database", () => {
     expect(await recordPublication(appSql(), failedCustomer, "Reviewer")).toBe(false);
   });
 
+  it("shows each finding once from the latest published run and counts the invoice once", async () => {
+    const customerId = await insertCustomer("two_runs", "Two Runs");
+    const invoice = await insertInvoice(customerId, "RUN-INV");
+    const first = await insertRules(customerId, [{ id: invoice.id, pursue: true }], "2 hours");
+    await insertFinding(customerId, invoice.id, first, "day1", "First count.");
+    expect(await recordPublication(appSql(), customerId, "Reviewer")).toBe(true);
+
+    const second = await insertRules(customerId, [{ id: invoice.id, pursue: true }]);
+    await insertFinding(customerId, invoice.id, second, "day1", "Second count.");
+    await insertFinding(customerId, invoice.id, second, "day1", "Second line.");
+    const during = await asCustomer(customerId, `SELECT plain_text FROM portal_finding ORDER BY plain_text`);
+    expect(during.map((row) => row.plain_text)).toEqual(["First count."]);
+    const hidden = await asCustomer(customerId, `SELECT status FROM portal_invoice`);
+    expect(hidden).toEqual([{ status: "Being checked" }]);
+
+    expect(await recordPublication(appSql(), customerId, "Reviewer")).toBe(true);
+    const findings = await asCustomer(customerId, `SELECT plain_text FROM portal_finding ORDER BY plain_text`);
+    expect(findings.map((row) => row.plain_text)).toEqual(["Second count.", "Second line."]);
+    const summed = await asCustomer(
+      customerId,
+      `SELECT count(*)::int AS invoices, COALESCE(sum(disputable), 0)::text AS disputable FROM portal_invoice`,
+    );
+    expect(summed).toEqual([{ invoices: 1, disputable: "8.00" }]);
+  });
+
   it("exposes only the portal columns and keeps the views security invoker", async () => {
     const columns = await owner.query<{ table_name: string; column_name: string }>(
       `SELECT table_name, column_name FROM information_schema.columns
@@ -240,8 +275,8 @@ describe("portal database", () => {
       list.push(row.column_name);
       byView.set(row.table_name, list);
     }
-    expect(byView.get("portal_invoice")).toEqual(["invoice_number", "invoice_date", "currency", "status"]);
-    expect(byView.get("portal_finding")).toEqual(["invoice_number", "title", "plain_text", "counted_amount", "currency"]);
+    expect(byView.get("portal_invoice")).toEqual(["invoice_number", "invoice_date", "currency", "status", "disputable"]);
+    expect(byView.get("portal_finding")).toEqual(["invoice_number", "title", "plain_text", "currency"]);
     expect(byView.get("portal_report")).toEqual([
       "report_number",
       "issued_on",
@@ -364,7 +399,11 @@ describe("portal database", () => {
     return { id, documentId };
   }
 
-  async function insertRules(customerId: string, invoices: { id: string; pursue: boolean }[]): Promise<string> {
+  async function insertRules(
+    customerId: string,
+    invoices: { id: string; pursue: boolean }[],
+    startedAgo = "0 seconds",
+  ): Promise<string> {
     const line = (invoice: { id: string; pursue: boolean }, amount: string) => ({
       invoice_id: invoice.id,
       disputable: amount,
@@ -385,9 +424,9 @@ describe("portal database", () => {
       },
     };
     const inserted = await owner.query<{ id: string }>(
-      `INSERT INTO "ProcessingRun" (customer_id, kind, finished_at, page_records)
-       VALUES ($1, 'rules', now(), $2::jsonb) RETURNING id`,
-      [customerId, JSON.stringify(payload)],
+      `INSERT INTO "ProcessingRun" (customer_id, kind, started_at, finished_at, page_records)
+       VALUES ($1, 'rules', now() - $3::interval, now(), $2::jsonb) RETURNING id`,
+      [customerId, JSON.stringify(payload), startedAgo],
     );
     const id = inserted.rows[0]?.id;
     if (id === undefined) throw new Error("missing rules run");

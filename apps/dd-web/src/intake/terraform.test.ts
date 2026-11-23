@@ -203,7 +203,7 @@ describe("terraform plan", () => {
     expect(Array.isArray(factors) ? [...factors].map(String).sort() : []).toEqual(["EMAIL_OTP", "WEB_AUTHN"]);
     const passkey = block(pool, "web_authn_configuration");
     expect(passkey.relying_party_id).toBe("portal.example.com");
-    expect(passkey.user_verification).toBe("preferred");
+    expect(passkey.user_verification).toBe("required");
     const client = resource("aws_cognito_user_pool_client", "portal");
     expect(client.name).toBe("dd-portal");
     expect(client.generate_secret).toBe(false);
