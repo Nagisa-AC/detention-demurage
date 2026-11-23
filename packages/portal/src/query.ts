@@ -1,5 +1,6 @@
 import { Client } from "pg";
-import { isPortalCustomer, type PortalCustomer } from "./customer";
+import { isPortalCustomer, resolvePortalCustomer, type PortalAccount, type PortalCustomer } from "./customer";
+import { verifyPortalIdToken } from "./verify";
 
 export type PortalInvoice = {
   invoice_number: string;
@@ -25,10 +26,13 @@ export type PortalReport = {
   csv_key: string;
 };
 
+export type PortalProfile = { display_name: string };
+
 export type PortalViews = {
   invoices(): Promise<PortalInvoice[]>;
   findings(): Promise<PortalFinding[]>;
   reports(): Promise<PortalReport[]>;
+  profile(): Promise<PortalProfile | null>;
 };
 
 /**
@@ -37,9 +41,7 @@ export type PortalViews = {
  */
 export async function withPortalQuery<T>(customer: PortalCustomer, run: (views: PortalViews) => Promise<T>): Promise<T> {
   if (!isPortalCustomer(customer)) throw new Error("The customer comes from the verified portal session.");
-  const url = process.env.PORTAL_DATABASE_URL;
-  if (url === undefined || url === "") throw new Error("PORTAL_DATABASE_URL is not set.");
-  const client = new Client({ connectionString: url });
+  const client = portalClient();
   await client.connect();
   try {
     await client.query("BEGIN");
@@ -68,6 +70,10 @@ export async function withPortalQuery<T>(customer: PortalCustomer, run: (views: 
              FROM portal_report ORDER BY report_number`,
           )
         ).rows,
+      profile: async () => {
+        const result = await client.query<PortalProfile>(`SELECT display_name FROM portal_profile`);
+        return result.rows[0] ?? null;
+      },
     };
     const result = await run(views);
     await client.query("COMMIT");
@@ -78,4 +84,41 @@ export async function withPortalQuery<T>(customer: PortalCustomer, run: (views: 
   } finally {
     await client.end();
   }
+}
+
+/** Sub to customer id. A database error refuses sign-in. Nothing about the customer is logged. */
+export async function lookupPortalCustomer(sub: string): Promise<string | null> {
+  if (sub.trim() === "" || sub.length > 256) return null;
+  let client: Client | null = null;
+  try {
+    client = portalClient();
+    await client.connect();
+    const result = await client.query<{ portal_customer_id: string | null }>(
+      `SELECT portal_customer_id($1)::text AS portal_customer_id`,
+      [sub],
+    );
+    const customerId = result.rows[0]?.portal_customer_id ?? null;
+    if (customerId === null || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(customerId)) {
+      return null;
+    }
+    return customerId;
+  } catch {
+    return null;
+  } finally {
+    await client?.end().catch(() => undefined);
+  }
+}
+
+/** Production entry. The token is the portal ID token from the session cookie. */
+export async function resolvePortalRequest(token: string | null): Promise<PortalAccount | null> {
+  return resolvePortalCustomer(token, {
+    verify: verifyPortalIdToken,
+    lookup: lookupPortalCustomer,
+  });
+}
+
+function portalClient(): Client {
+  const url = process.env.PORTAL_DATABASE_URL;
+  if (url === undefined || url === "") throw new Error("PORTAL_DATABASE_URL is not set.");
+  return new Client({ connectionString: url });
 }

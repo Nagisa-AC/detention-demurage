@@ -3,11 +3,14 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { appDatabaseUrl, testDatabaseUrl } from "./guard";
-import { lookupPortalCustomer, resolvePortalCustomer } from "../portal/customer";
-import { withPortalQuery } from "../portal/query";
+import { lookupPortalCustomer, resolvePortalCustomer, withPortalQuery } from "portal";
+import { loadHome, loadInvoice } from "../../../dd-portal/src/model";
+import { HomeView, InvoiceDetailView, MissingInvoice } from "../../../dd-portal/src/views";
 import { recordPublication } from "../publish";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -181,31 +184,109 @@ describe("portal database", () => {
 
   it("resolves the customer from the sub and ignores the request", async () => {
     const world = await seed();
-    const customer = await resolvePortalCustomer(
-      {
-        url: `https://portal.example/invoices?customerId=${world.b}`,
-        headers: {
-          get(name: string) {
-            if (name === "authorization") return "Bearer header.payload.sig";
-            if (name === "x-customer-id") return world.b;
-            return null;
-          },
-        },
-      },
-      {
-        verify: async () => ({ sub: "sub-a" }),
-        lookup: (sub) => lookupPortalCustomer(appSql(), sub),
-      },
-    );
-    expect(customer?.customerId).toBe(world.a);
-    const seen = await withPortalQuery(customer!, async (views) => (await views.invoices()).map((row) => row.invoice_number));
+    const account = await resolvePortalCustomer("header.payload.sig", {
+      verify: async () => ({ sub: "sub-a", email: "a@example.com" }),
+      lookup: (sub) => lookupPortalCustomer(sub),
+    });
+    expect(account?.customer.customerId).toBe(world.a);
+    expect(account?.email).toBe("a@example.com");
+    const seen = await withPortalQuery(account!.customer, async (views) => (await views.invoices()).map((row) => row.invoice_number));
     expect(seen).toEqual(["A-CHECKED", "A-OPEN", "A-RECEIVED", "A-SKIP"]);
     await app.query(
       `INSERT INTO "AuditEvent" (customer_id, actor, action, payload)
        SELECT customer_id, 'Staff', 'portal_user_disabled', jsonb_build_object('portal_user_id', id::text)
        FROM "PortalUser" WHERE cognito_sub = 'sub-a'`,
     );
-    expect(await lookupPortalCustomer(appSql(), "sub-a")).toBeNull();
+    expect(await lookupPortalCustomer("sub-a")).toBeNull();
+    const profile = await asCustomer(world.a, `SELECT display_name FROM portal_profile`);
+    expect(profile).toEqual([{ display_name: "Harbor Home Goods" }]);
+  });
+
+  it("shows customer A through the app and never customer B", async () => {
+    const world = await seed();
+    const account = await resolvePortalCustomer("portal-token", {
+      verify: async () => ({ sub: "sub-a", email: "a@example.com" }),
+      lookup: (sub) => lookupPortalCustomer(sub),
+    });
+    expect(account).not.toBeNull();
+    const home = await loadHome(account!.customer);
+    const homeHtml = renderToStaticMarkup(createElement(HomeView, { model: home }));
+    expect(homeHtml).toContain("Welcome back");
+    expect(homeHtml).toContain("A-CHECKED");
+    expect(homeHtml).toContain("A-RECEIVED");
+    expect(homeHtml).not.toContain("B-CHECKED");
+    expect(homeHtml).not.toContain("B-ATTENTION");
+    expect(homeHtml).not.toContain("C-FAILED");
+    expect(home.disputableLabel).toBe("$8.00");
+
+    const other = await loadInvoice(account!.customer, "B-CHECKED");
+    expect(other).toBeNull();
+    const missing = renderToStaticMarkup(createElement(MissingInvoice));
+    expect(missing).toContain("in your account");
+
+    const checked = await loadInvoice(account!.customer, "A-CHECKED");
+    expect(checked?.findings.map((finding) => finding.plainText)).toEqual(["Checked against ."]);
+    const checkedHtml = renderToStaticMarkup(createElement(InvoiceDetailView, { detail: checked! }));
+    expect(checkedHtml).toContain("Checked against .");
+    expect(checkedHtml).not.toContain("Billed twice.");
+
+    const checkedId = await owner.query<{ id: string }>(
+      `SELECT id FROM "Invoice" WHERE customer_id = $1 AND invoice_number = 'A-CHECKED'`,
+      [world.a],
+    );
+    await owner.query(
+      `INSERT INTO "ProcessingRun" (customer_id, kind, started_at, finished_at, page_records)
+       VALUES ($1, 'rules', now() + interval '1 minute', now() + interval '1 minute', $2::jsonb)`,
+      [
+        world.a,
+        JSON.stringify({
+          failed: false,
+          settings_version: 1,
+          invoice_ids: [checkedId.rows[0]?.id],
+          total_disputable: { day0: [], day1: [] },
+          invoices: { day0: [], day1: [] },
+        }),
+      ],
+    );
+    const reviewing = await loadInvoice(account!.customer, "A-CHECKED");
+    expect(reviewing?.invoice.status).toBe("Being checked");
+    expect(reviewing?.findings).toEqual([]);
+    expect(reviewing?.reviewing).toBe(true);
+    const reviewingHtml = renderToStaticMarkup(createElement(InvoiceDetailView, { detail: reviewing! }));
+    expect(reviewingHtml).toContain("reviewing this invoice");
+    expect(reviewingHtml).not.toContain("Checked against");
+    const stillThere = await asCustomer(world.a, `SELECT plain_text FROM portal_finding`);
+    expect(stillThere.map((row) => row.plain_text)).toContain("Checked against .");
+
+    await app.query(
+      `INSERT INTO "AuditEvent" (customer_id, actor, action, payload)
+       SELECT customer_id, 'Staff', 'portal_user_disabled', jsonb_build_object('portal_user_id', id::text)
+       FROM "PortalUser" WHERE cognito_sub = 'sub-a'`,
+    );
+    const refused = await resolvePortalCustomer("portal-token", {
+      verify: async () => ({ sub: "sub-a", email: "a@example.com" }),
+      lookup: (sub) => lookupPortalCustomer(sub),
+    });
+    expect(refused).toBeNull();
+  });
+
+  it("refuses sign-in when the disabled check cannot see events", async () => {
+    const world = await seed();
+    const enabled = await portal.query<{ id: string | null }>(`SELECT portal_customer_id('sub-a')::text AS id`);
+    expect(enabled.rows[0]?.id).toBe(world.a);
+    const hiddenByFilter = await asCustomer(world.a, `SELECT portal_customer_id('sub-a')::text AS id`);
+    expect(hiddenByFilter).toEqual([{ id: null }]);
+    await owner.query(`DROP POLICY dd_portal_reader_lookup ON "AuditEvent"`);
+    try {
+      const refused = await portal.query<{ id: string | null }>(`SELECT portal_customer_id('sub-a')::text AS id`);
+      expect(refused.rows[0]?.id).toBeNull();
+    } finally {
+      await owner.query(
+        `CREATE POLICY dd_portal_reader_lookup ON "AuditEvent"
+           FOR SELECT TO dd_portal_reader
+           USING (current_setting('portal.lookup', true) = '1')`,
+      );
+    }
   });
 
   it("publishes the latest successful run, not an earlier one", async () => {

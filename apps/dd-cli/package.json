@@ -9,7 +9,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1169.0",
     "dd-core": "workspace:*",
-    "dd-extract": "workspace:*"
+    "dd-extract": "workspace:*",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
   }
 }
