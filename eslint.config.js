@@ -6,6 +6,7 @@ import tseslint from "typescript-eslint";
 const boundaryMessage = "dd-core must not import packages/extract.";
 const harnessMessage = "The eval harness does not import dd-extract.";
 const webMessage = "apps/dd-web must not import dd-extract.";
+const portalAppMessage = "dd-portal must not import the staff app.";
 
 export default defineConfig(
   {
@@ -103,6 +104,22 @@ export default defineConfig(
             {
               group: ["dd-extract/*", "**/packages/extract", "**/packages/extract/**"],
               message: harnessMessage,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["apps/dd-portal/**/*.{ts,tsx}", "packages/portal/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/apps/dd-web", "**/apps/dd-web/**", "**/dd-web", "**/dd-web/**"],
+              message: portalAppMessage,
             },
           ],
         },

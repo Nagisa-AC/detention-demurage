@@ -661,14 +661,18 @@ async function ensurePortalRoles(url: string): Promise<void> {
   await client.connect();
   try {
     const existing = await client.query<{ rolname: string }>(
-      `SELECT rolname FROM pg_roles WHERE rolname IN ('dd_portal', 'dd_portal_reader')`,
+      `SELECT rolname FROM pg_roles WHERE rolname IN ('dd_portal', 'dd_portal_reader', 'dd_portal_lookup')`,
     );
     const names = new Set(existing.rows.map((row) => row.rolname));
     if (!names.has("dd_portal")) await createRole(client, `CREATE ROLE dd_portal LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
     if (!names.has("dd_portal_reader")) {
       await createRole(client, `CREATE ROLE dd_portal_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
     }
+    if (!names.has("dd_portal_lookup")) {
+      await createRole(client, `CREATE ROLE dd_portal_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    }
     await client.query(`GRANT dd_portal_reader TO CURRENT_USER`);
+    await client.query(`GRANT dd_portal_lookup TO CURRENT_USER`);
   } finally {
     await client.end();
   }
