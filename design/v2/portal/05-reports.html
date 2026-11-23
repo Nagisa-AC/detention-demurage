@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Reports</title><style>
+:root{--bg:#F7F6F2;--panel:#FFFFFF;--panel2:#F2F1EC;--line:#E1DFD7;--line2:#ECEAE4;--ink:#1A1A17;--mute:#66655E;--dim:#A09F97;--accent:#E8A87C;--accentInk:#2A170A;--good:#E1F1E8;--goodInk:#1D5A3E;--warn:#FBEBD3;--warnInk:#8A4B00;--info:#E3EAF7;--infoInk:#2A4C8E;--bad:#F7E1DE;--badInk:#8E2A20;--chip:#ECEBE5}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+.mono{font-family:"DejaVu Sans Mono",ui-monospace,monospace;font-size:13px}
+header{display:flex;align-items:center;gap:28px;padding:0 32px;height:60px;border-bottom:1px solid var(--line);background:var(--panel)}
+.logo{font-weight:700;font-size:15px;display:flex;align-items:center;gap:10px}.logo i{width:22px;height:22px;border-radius:6px;background:var(--accent);display:inline-block}
+nav{display:flex;gap:4px}nav a{padding:8px 12px;border-radius:6px;color:var(--mute)}nav a.on{color:var(--ink);background:var(--chip)}
+.user{margin-left:auto;color:var(--mute);font-size:13px;display:flex;gap:14px;align-items:center}.co{color:var(--ink);font-weight:500}
+.wrap{padding:28px 32px 48px}
+h1{margin:0 0 4px;font-size:28px;font-weight:600;letter-spacing:-.01em}.sub{color:var(--mute);margin-bottom:24px}
+.row{display:flex;gap:16px;align-items:center}.sp{margin-left:auto}
+.btn{height:38px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;display:inline-flex;align-items:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accentInk);border-color:var(--accent);font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:24px}
+.stat{padding:20px 24px;border-right:1px solid var(--line)}.stat:last-child{border:0}
+.k{font-size:11.5px;letter-spacing:.08em;color:var(--mute);text-transform:uppercase}
+.v{font-size:34px;font-weight:500;letter-spacing:-.02em;margin:10px 0 4px}.s{color:var(--mute);font-size:13px}
+.card{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden;margin-bottom:24px}
+.ch{padding:16px 20px;border-bottom:1px solid var(--line);font-weight:600;display:flex;align-items:center}
+.grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:24px}
+table{width:100%;border-collapse:collapse}th{font-weight:500;color:var(--mute);text-align:left;font-size:13px;padding:12px 20px;background:var(--panel2);border-bottom:1px solid var(--line)}
+td{padding:14px 20px;border-bottom:1px solid var(--line2)}tr:last-child td{border-bottom:0}.r{text-align:right}
+.pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap}
+.p-recv{background:var(--chip);color:var(--mute)}.p-rev{background:var(--info);color:var(--infoInk)}.p-ok{background:var(--good);color:var(--goodInk)}.p-find{background:var(--warn);color:var(--warnInk)}.p-disp{background:#EDE3F5;color:#5B2F86}.p-res{background:var(--good);color:var(--goodInk)}
+.act{padding:14px 20px;border-bottom:1px solid var(--line2);display:flex;gap:12px}.act:last-child{border:0}.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:6px;flex:none}.act .d{margin-left:auto;color:var(--mute);font-size:13px;white-space:nowrap}
+.fwd{padding:20px}.addr{display:flex;align-items:center;justify-content:space-between;border:1px dashed var(--line);border-radius:8px;padding:12px 14px;background:var(--panel2);margin:10px 0}
+.drop{border:2px dashed #D4D1C6;border-radius:12px;background:var(--panel);padding:56px;text-align:center;margin-bottom:24px}
+.drop .big{font-size:20px;font-weight:600;margin:12px 0 6px}.ic{width:48px;height:48px;border-radius:12px;background:var(--warn);color:var(--warnInk);display:inline-flex;align-items:center;justify-content:center;font-size:24px}
+.bar{height:6px;background:var(--chip);border-radius:3px;width:160px;overflow:hidden}.bar b{display:block;height:100%;background:var(--accent)}
+.input{height:40px;border:1px solid var(--line);background:var(--panel);border-radius:8px;display:flex;align-items:center;padding:0 12px;color:var(--mute);gap:8px}
+.tl{display:flex;padding:22px 20px}.st{flex:1;position:relative;text-align:center;font-size:13px;color:var(--mute)}.st:before{content:"";position:absolute;top:11px;left:-50%;right:50%;height:2px;background:var(--line)}.st:first-child:before{display:none}
+.st .c{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);background:var(--panel);margin:0 auto 8px;position:relative;z-index:1}
+.st.done .c{background:var(--accent);border-color:var(--accent)}.st.done:before{background:var(--accent)}.st.cur .c{border-color:var(--accent);box-shadow:0 0 0 4px #F6DCC8}.st.done,.st.cur{color:var(--ink)}
+.find{padding:18px 20px;border-bottom:1px solid var(--line2)}.find:last-child{border:0}.find h4{margin:0 0 6px;font-size:15px}.find p{margin:0;color:var(--mute);line-height:1.5}
+.amt{font-size:18px;font-weight:600}
+.pdf{background:var(--panel2);height:430px;margin:20px;border:1px solid var(--line);border-radius:6px;padding:22px;font-size:11px;color:var(--mute);line-height:1.9}
+.pdf b{color:var(--ink)}
+.note{font-size:12.5px;color:var(--mute);padding:12px 20px;background:var(--panel2);border-top:1px solid var(--line)}
+</style></head><body><header><div class="logo"><i></i>Tidemark Recovery</div><nav><a class="">Home</a><a class="">Upload</a><a class="">Invoices</a><a class="on">Reports</a><a class="">Account</a></nav><div class="user"><span class="co">Harbor Home Goods</span><span>Dana Ruiz · Sign out</span><span>☾</span></div></header><div class="wrap">
+<h1>Reports</h1><div class="sub">Each report lists the issues we found, the rules behind them, and the invoice pages as evidence.</div>
+<div class="card"><table><tr><th>Report</th><th>Date</th><th class="r">Invoices</th><th class="r">Issues found</th><th class="r">Disputable</th><th></th></tr><tr><td class="mono">TMR-2026-004</td><td>Nov 20, 2026</td><td class="r">18</td><td class="r">9</td><td class="r">$4,300</td><td class="r"><span class="btn">Download PDF</span></td></tr><tr><td class="mono">TMR-2026-003</td><td>Oct 22, 2026</td><td class="r">11</td><td class="r">4</td><td class="r">$2,950</td><td class="r"><span class="btn">Download PDF</span></td></tr><tr><td class="mono">TMR-2026-002</td><td>Oct 01, 2026</td><td class="r">9</td><td class="r">3</td><td class="r">$1,400</td><td class="r"><span class="btn">Download PDF</span></td></tr></table></div></div></body></html>
