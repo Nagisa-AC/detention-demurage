@@ -72,6 +72,7 @@ describe("dd-web boundary", () => {
       "(signed-in)/customers/check-config-id.ts",
       "(signed-in)/customers/create-customer.ts",
       "(signed-in)/customers/export-report.ts",
+      "(signed-in)/customers/publish-results.ts",
       "(signed-in)/customers/rerun-checks.ts",
       "(signed-in)/customers/save-settings.ts",
       "(signed-in)/firm/save-firm.ts",

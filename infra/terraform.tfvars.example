@@ -4,6 +4,8 @@
 
 bucket_name   = "dd-recovery-us-east-2-change-me"
 upload_origin = "https://detention-demurage.vercel.app"
+# Hostname of the future customer portal. Passkeys are bound to it. Replace before apply.
+portal_host   = "portal.example.com"
 vpc_id      = "vpc-change-me"
 subnet_id   = "subnet-change-me"
 ami_id      = "ami-change-me"

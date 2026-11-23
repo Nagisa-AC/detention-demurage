@@ -53,3 +53,17 @@ scripts/diagnose-run.sh <run-id>
 Logs are `journalctl -u dd-worker`. Each line carries the processing-run id. A failure line is `run <id> failed <stage> <name> <code>`. The lines do not include a customer name, a config id, a storage key, page text, or an error message. Rollback restores `/opt/dd-worker-previous`. Requeue clears `finished_at`, `attempts`, the lease, and `page_records` for that one run. It connects as `dd_app` with the worker's database URL and does not print the URL. Diagnose processes that one document once, in a transient unit with the same sandbox and memory cap as `dd-worker`, and prints the error to the command output. It refuses a hash that is not one of the eight synthetic documents. These scripts read the bucket and the instance id from terraform outputs and stop when AWS credentials are missing.
 
 If an older `terraform.tfvars` still has `aws_account_id`, `vercel_team_slug`, `vercel_project_name`, or `vercel_oidc_thumbprint`, delete those lines. They are no longer variables.
+
+## Customer portal
+
+The customer pool is `dd-portal` in us-east-2, separate from the staff pool. Only an admin can create users. Sign-in is a passkey, with an email one-time code as the other first factor. The AWS provider expresses both, so there is no console step for them. The app client has no secret. Set `portal_host` in `terraform.tfvars` to the portal hostname before you plan. Passkeys are bound to that host.
+
+Run these as the migration owner, then plan. CI plans and does not apply.
+
+```sh
+psql "$DATABASE_URL" -f apps/dd-web/prisma/create-portal-role.sql
+pnpm --filter dd-web exec prisma migrate deploy
+terraform -chdir=infra plan
+```
+
+Set the `dd_portal` password in Neon after the role exists. Do not put it in the repo. The portal app reads `PORTAL_DATABASE_URL`, `PORTAL_COGNITO_USER_POOL_ID`, and `PORTAL_COGNITO_CLIENT_ID`. `PORTAL_COGNITO_REGION` defaults to us-east-2. The pool id and client id are the `portal_user_pool_id` and `portal_client_id` outputs.
