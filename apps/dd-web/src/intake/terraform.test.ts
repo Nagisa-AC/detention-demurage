@@ -48,6 +48,7 @@ beforeAll(() => {
       "-var=vpc_id=vpc-0123456789abcdef0",
       "-var=subnet_id=subnet-0123456789abcdef0",
       "-var=ami_id=ami-0123456789abcdef0",
+      "-var=portal_host=portal.example.com",
     ],
     { cwd: infra, env, stdio: "pipe" },
   );
@@ -189,6 +190,32 @@ describe("terraform plan", () => {
     }
     expect(rendered).not.toContain("User=root");
     expect(String(instance.user_data)).toBe(createHash("sha1").update(rendered).digest("hex"));
+  });
+
+  it("keeps the customer pool separate, admin-only, and without a client secret", () => {
+    const pool = resource("aws_cognito_user_pool", "portal");
+    expect(pool.name).toBe("dd-portal");
+    expect(fs.readFileSync(path.join(infra, "versions.tf"), "utf8")).toContain('region                      = "us-east-2"');
+    expect(pool.user_pool_tier).toBe("ESSENTIALS");
+    expect(block(pool, "admin_create_user_config").allow_admin_create_user_only).toBe(true);
+    expect(pool.username_attributes).toEqual(["email"]);
+    const factors = block(pool, "sign_in_policy").allowed_first_auth_factors;
+    expect(Array.isArray(factors) ? [...factors].map(String).sort() : []).toEqual(["EMAIL_OTP", "WEB_AUTHN"]);
+    const passkey = block(pool, "web_authn_configuration");
+    expect(passkey.relying_party_id).toBe("portal.example.com");
+    expect(passkey.user_verification).toBe("required");
+    const client = resource("aws_cognito_user_pool_client", "portal");
+    expect(client.name).toBe("dd-portal");
+    expect(client.generate_secret).toBe(false);
+    expect([...(Array.isArray(client.explicit_auth_flows) ? client.explicit_auth_flows : [])].map(String).sort()).toEqual([
+      "ALLOW_REFRESH_TOKEN_AUTH",
+      "ALLOW_USER_AUTH",
+    ]);
+    const outputs = fs.readFileSync(path.join(infra, "outputs.tf"), "utf8");
+    expect(outputs).toContain("portal_user_pool_id");
+    expect(outputs).toContain("portal_client_id");
+    const ci = fs.readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+    expect(ci).not.toContain("terraform apply");
   });
 
   it("opens worker egress on 5432 for Neon", () => {

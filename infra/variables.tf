@@ -33,3 +33,13 @@ variable "ami_id" {
   type        = string
   description = "Amazon Linux 2023 arm64 AMI in us-east-2. Look up the current id at apply; do not bake an image."
 }
+
+variable "portal_host" {
+  type        = string
+  description = "Hostname of the future customer portal. Passkeys are bound to this host. No scheme, no path, no wildcard."
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$", var.portal_host))
+    error_message = "portal_host must be a lowercase hostname, with no scheme and no wildcard."
+  }
+}

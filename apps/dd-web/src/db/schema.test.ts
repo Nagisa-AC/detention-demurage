@@ -21,7 +21,7 @@ import { insertSettingsVersion, type SettingsSql } from "../settings";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const documentHash = createHash("sha256").update("synthetic-db-fixture").digest("hex");
-const appendOnly = ["Submission", "LedgerEntry", "AuditEvent", "CustomerConfigVersion", "FirmProfileVersion", "ReportExport"] as const;
+const appendOnly = ["Submission", "LedgerEntry", "AuditEvent", "CustomerConfigVersion", "FirmProfileVersion", "ReportExport", "PortalUser"] as const;
 const laterTables = ["Case", "CaseLine", "Submission", "LedgerEntry", "FeeInvoice", "ReportExport"] as const;
 const customerTables = [
   "AuditEvent",
@@ -36,6 +36,7 @@ const customerTables = [
   "Finding",
   "Invoice",
   "LedgerEntry",
+  "PortalUser",
   "ProcessingRun",
   "ReportExport",
   "Submission",
@@ -51,6 +52,7 @@ describe("database", () => {
     ownerUrl = testDatabaseUrl();
     await ensureDatabase(ownerUrl);
     await ensureAppRole(ownerUrl);
+    await ensurePortalRoles(ownerUrl);
     execFileSync("pnpm", ["exec", "prisma", "generate"], {
       cwd: webRoot,
       env: { ...process.env, DATABASE_URL: ownerUrl },
@@ -92,7 +94,7 @@ describe("database", () => {
   beforeEach(async () => {
     await owner.query(`TRUNCATE TABLE
       "ReportExport", "Finding", "ProcessingRun", "ChargeLine", "ElementValue", "Invoice", "Document",
-      "CaseLine", "Case", "Submission", "LedgerEntry", "FeeInvoice", "AuditEvent",
+      "CaseLine", "Case", "Submission", "LedgerEntry", "FeeInvoice", "AuditEvent", "PortalUser",
       "CustomerConfigVersion", "FirmProfileVersion", "Customer"`);
   });
 
@@ -652,6 +654,33 @@ async function expectSqlState(run: Promise<unknown>, code: string): Promise<void
     return;
   }
   throw new Error(`expected SQLSTATE ${code}`);
+}
+
+async function ensurePortalRoles(url: string): Promise<void> {
+  const client = new Client({ connectionString: url });
+  await client.connect();
+  try {
+    const existing = await client.query<{ rolname: string }>(
+      `SELECT rolname FROM pg_roles WHERE rolname IN ('dd_portal', 'dd_portal_reader')`,
+    );
+    const names = new Set(existing.rows.map((row) => row.rolname));
+    if (!names.has("dd_portal")) await createRole(client, `CREATE ROLE dd_portal LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    if (!names.has("dd_portal_reader")) {
+      await createRole(client, `CREATE ROLE dd_portal_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
+    }
+    await client.query(`GRANT dd_portal_reader TO CURRENT_USER`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function createRole(client: Client, sql: string): Promise<void> {
+  try {
+    await client.query(sql);
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "42710") return;
+    throw error;
+  }
 }
 
 async function ensureAppRole(url: string): Promise<void> {
