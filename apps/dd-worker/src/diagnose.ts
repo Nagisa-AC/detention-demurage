@@ -5,6 +5,7 @@ const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export type DiagnoseDocument = {
   storageKey: string;
   sha256: string;
+  customerId?: string;
 };
 
 /**
@@ -15,6 +16,7 @@ export type DiagnoseDocument = {
 export async function diagnoseRun(input: {
   runId: string;
   allow: ReadonlySet<string>;
+  acceptsReal?: (customerId: string) => Promise<boolean>;
   load: (runId: string) => Promise<DiagnoseDocument | null>;
   download: (key: string) => Promise<Uint8Array>;
   process: (pdf: Uint8Array, declaredHash: string) => Promise<ProcessResult>;
@@ -38,8 +40,14 @@ export async function diagnoseRun(input: {
     return 1;
   }
   if (!input.allow.has(document.sha256)) {
-    input.write("refused not_synthetic");
-    return 1;
+    const accepts =
+      document.customerId !== undefined && input.acceptsReal !== undefined
+        ? await input.acceptsReal(document.customerId)
+        : false;
+    if (!accepts) {
+      input.write("refused not_synthetic");
+      return 1;
+    }
   }
   let pdf: Uint8Array;
   try {

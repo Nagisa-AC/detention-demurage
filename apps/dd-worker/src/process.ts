@@ -1,5 +1,16 @@
 import { createHash } from "node:crypto";
-import { ELEMENT_KEYS, ELEMENTS, StitchError, type ElementKey, type PageExtraction } from "dd-core";
+import {
+  ELEMENT_KEYS,
+  ELEMENTS,
+  pdfReadFailure,
+  realPdfLimits,
+  refusalForRealPdf,
+  StitchError,
+  type ElementKey,
+  type PageExtraction,
+  type PdfRead,
+  type RealPdfLimits,
+} from "dd-core";
 import { MAX_PAGES, PageLimitError } from "dd-extract";
 import { GroundingError, StitchFailure } from "./errors.js";
 import { foldText, groundValue } from "./ground.js";
@@ -42,15 +53,31 @@ export async function processDocument(input: {
   pdf: Uint8Array;
   declaredHash: string;
   allow: ReadonlySet<string>;
+  acceptsReal?: boolean;
+  limits?: RealPdfLimits;
+  inspect?: (pdf: Uint8Array) => Promise<PdfRead>;
   readPages: (pdf: Uint8Array) => Promise<readonly string[]>;
   extract: (pdf: Uint8Array, pages: readonly number[]) => Promise<readonly GroundPage[]>;
   log?: (line: string) => void;
 }): Promise<ProcessResult> {
   const actual = sha256Hex(input.pdf);
   if (actual !== input.declaredHash) return skipped("checksum", input.log);
-  if (!input.allow.has(actual)) return skipped("not_synthetic", input.log);
+  const synthetic = input.allow.has(actual);
+  if (!synthetic) {
+    if (input.acceptsReal !== true) return skipped("not_synthetic", input.log);
+    const refused = await refuseReal(input.pdf, input.limits ?? realPdfLimits(), input.inspect, input.log);
+    if (refused !== null) return refused;
+  }
 
-  const texts = await input.readPages(input.pdf);
+  let texts: readonly string[];
+  try {
+    texts = await input.readPages(input.pdf);
+  } catch (error) {
+    if (!synthetic && input.acceptsReal === true) return skipped(pdfReadFailure(error), input.log);
+    throw error;
+  }
+  const pageCap = input.limits ?? realPdfLimits();
+  if (!synthetic && texts.length > pageCap.maxPages) return skipped("too_many_pages", input.log);
   if (texts.length > MAX_PAGES) throw new PageLimitError();
   const withText: number[] = [];
   const stored: StoredPage[] = [];
@@ -111,7 +138,28 @@ export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function skipped(reason: "checksum" | "not_synthetic", log?: (line: string) => void): ProcessResult {
+async function refuseReal(
+  pdf: Uint8Array,
+  limits: RealPdfLimits,
+  inspect: ((pdf: Uint8Array) => Promise<PdfRead>) | undefined,
+  log?: (line: string) => void,
+): Promise<ProcessResult | null> {
+  if (pdf.byteLength > limits.maxBytes) return skipped("too_large", log);
+  let read: PdfRead;
+  try {
+    read = inspect === undefined ? { kind: "malformed" } : await inspect(pdf);
+  } catch (error) {
+    read = { kind: pdfReadFailure(error) };
+  }
+  const reason = refusalForRealPdf({ byteSize: pdf.byteLength, read, limits });
+  if (reason !== null) return skipped(reason, log);
+  return null;
+}
+
+function skipped(
+  reason: "checksum" | "not_synthetic" | "too_large" | "too_many_pages" | "encrypted" | "malformed",
+  log?: (line: string) => void,
+): ProcessResult {
   log?.(`document ${reason}`);
   return {
     finish: "failed",

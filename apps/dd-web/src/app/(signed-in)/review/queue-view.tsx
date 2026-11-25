@@ -18,6 +18,7 @@ export type ManualRow = {
   id: string;
   customer: string;
   received: string;
+  label?: string;
 };
 
 export type ApprovedRow = {
@@ -204,10 +205,10 @@ function ManualTable({ rows }: { rows: ManualRow[] }) {
                 <span className="badge">{initials(row.customer)}</span>
                 <span>
                   <span className="n">
-                    <span className="mono2">No text layer</span>
-                    <span className="tag">No text</span>
+                    <span className="mono2">{row.label ?? "No text layer"}</span>
+                    <span className="tag">{row.label === undefined ? "No text" : "Refused"}</span>
                   </span>
-                  <span className="sub">No invoice was read</span>
+                  <span className="sub">{row.label === undefined ? "No invoice was read" : "The file was not stored for reading"}</span>
                 </span>
               </div>
             </td>

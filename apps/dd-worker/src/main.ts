@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { fromInstanceMetadata } from "@aws-sdk/credential-providers";
+import { realPdfLimits } from "dd-core";
 import { extract } from "dd-extract";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pg from "pg";
@@ -12,8 +13,9 @@ import { syntheticAllowlist } from "./allow.js";
 import { diagnoseRun, formatFailure } from "./diagnose.js";
 import { runOnce } from "./loop.js";
 import { readModelPages } from "./model.js";
-import { readPdfPages } from "./pdf-text.js";
+import { inspectPdf, readPdfPages } from "./pdf-text.js";
 import { processDocument, sha256Hex } from "./process.js";
+import { acceptsRealDocuments } from "./real-documents.js";
 import { claimNext, finishRun, loadRunDocument, requeueRun } from "./queue.js";
 import { renderProbePage } from "./report/check.js";
 import { runReport } from "./report/run.js";
@@ -48,11 +50,14 @@ export async function main(): Promise<void> {
         if (bytes === undefined) throw new Error("The document object is empty.");
         return bytes;
       },
-      process: (pdf, declaredHash, log) =>
+      process: async (pdf, declaredHash, log, customerId) =>
         processDocument({
           pdf,
           declaredHash,
           allow,
+          acceptsReal: await acceptsRealDocuments(pool, customerId),
+          limits: realPdfLimits(),
+          inspect: inspectPdf,
           readPages: readPdfPages,
           extract: (file, pages) => readModelPages(file, pages),
           log,
@@ -268,10 +273,15 @@ async function diagnose(runId: string): Promise<void> {
   const s3 = new S3Client({ region: REGION, credentials });
   const hidden = [databaseUrl, anthropicKey];
   let code = 1;
+  let acceptsReal = false;
   try {
     code = await diagnoseRun({
       runId,
       allow: syntheticAllowlist(),
+      acceptsReal: async (customerId) => {
+        acceptsReal = await acceptsRealDocuments(pool, customerId);
+        return acceptsReal;
+      },
       secrets: hidden,
       load: (id) => loadRunDocument(pool, id),
       download: async (key) => {
@@ -285,6 +295,9 @@ async function diagnose(runId: string): Promise<void> {
           pdf,
           declaredHash,
           allow: syntheticAllowlist(),
+          acceptsReal,
+          limits: realPdfLimits(),
+          inspect: inspectPdf,
           readPages: readPdfPages,
           extract: (file, pages) => readModelPages(file, pages),
         }),

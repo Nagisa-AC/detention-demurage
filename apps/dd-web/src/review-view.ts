@@ -1,3 +1,4 @@
+import { rejectionLabel } from "./intake/reasons";
 import {
   ELEMENT_KEYS,
   ELEMENTS,
@@ -364,7 +365,19 @@ export type ManualDocument = {
   id: string;
   customer: string;
   receivedAt: string;
+  label?: string;
 };
+
+const REFUSAL_REASONS = new Set([
+  "checksum",
+  "missing",
+  "not_synthetic",
+  "copy",
+  "too_large",
+  "too_many_pages",
+  "encrypted",
+  "malformed",
+]);
 
 export type FinishedRun = {
   documentId: string;
@@ -385,11 +398,32 @@ export function manualEntries(runs: readonly FinishedRun[]): ManualDocument[] {
   const documents: ManualDocument[] = [];
   for (const run of latest.values()) {
     if (run.invoiceId !== null) continue;
-    if (!hasNoTextLayer(run.pageRecords)) continue;
-    documents.push({ id: run.documentId, customer: run.customer, receivedAt: run.receivedAt });
+    if (hasNoTextLayer(run.pageRecords)) {
+      documents.push({ id: run.documentId, customer: run.customer, receivedAt: run.receivedAt });
+      continue;
+    }
+    const reason = refusalReason(run.pageRecords);
+    if (reason === null) continue;
+    documents.push({
+      id: run.documentId,
+      customer: run.customer,
+      receivedAt: run.receivedAt,
+      label: rejectionLabel(reason),
+    });
   }
   documents.sort((left, right) => left.receivedAt.localeCompare(right.receivedAt) || left.id.localeCompare(right.id));
   return documents;
+}
+
+function refusalReason(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  for (const item of value) {
+    if (item === null || typeof item !== "object") continue;
+    const reason = (item as { status?: unknown; reason?: unknown }).reason;
+    const status = (item as { status?: unknown }).status;
+    if (status === "failed" && typeof reason === "string" && REFUSAL_REASONS.has(reason)) return reason;
+  }
+  return null;
 }
 
 function hasNoTextLayer(value: unknown): boolean {

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { splitPdf } from "dd-extract";
 import { describe, expect, it } from "vitest";
-import { readPdfPages } from "./pdf-text.js";
+import { inspectPdf, readPdfPages } from "./pdf-text.js";
 
 const cleanPdf = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../fixtures/synthetic/clean.pdf");
 
@@ -18,5 +18,12 @@ describe("readPdfPages", () => {
     expect(Buffer.from(pdf.subarray(0, 8)).toString("latin1")).toBe(header);
     const split = await splitPdf(pdf);
     expect(split.length).toBe(pages.length);
+    expect(await inspectPdf(pdf)).toEqual({ kind: "ok", pages: pages.length });
+  });
+
+  it("names an encrypted trailer and a file that is not a PDF", async () => {
+    const encrypted = new TextEncoder().encode("%PDF-1.4\ntrailer<</Encrypt 3 0 R>>\n%%EOF");
+    expect(await inspectPdf(encrypted)).toEqual({ kind: "encrypted" });
+    expect(await inspectPdf(new Uint8Array([1, 2, 3, 4]))).toEqual({ kind: "malformed" });
   });
 });

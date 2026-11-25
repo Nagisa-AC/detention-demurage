@@ -7,7 +7,12 @@ type Stage = "download" | "process" | "finish";
 export async function runOnce(deps: {
   claim: () => Promise<ClaimedRun | null>;
   download: (key: string) => Promise<Uint8Array>;
-  process: (pdf: Uint8Array, declaredHash: string, log: (line: string) => void) => Promise<ProcessResult>;
+  process: (
+    pdf: Uint8Array,
+    declaredHash: string,
+    log: (line: string) => void,
+    customerId: string,
+  ) => Promise<ProcessResult>;
   finish: (claimed: ClaimedExtract, result: ProcessResult & { permanent: boolean }) => Promise<void>;
   report: (claimed: ClaimedReport) => Promise<"finished" | "retry">;
   log: (line: string) => void;
@@ -30,7 +35,7 @@ export async function runOnce(deps: {
   try {
     const pdf = await deps.download(claimed.storageKey);
     stage = "process";
-    result = await deps.process(pdf, claimed.sha256, log);
+    result = await deps.process(pdf, claimed.sha256, log, claimed.customerId);
   } catch (error) {
     terminal = error instanceof StitchFailure || error instanceof NormalizeError;
     result = failedResult(stage, error, log);

@@ -1,6 +1,18 @@
 export const packageId = "dd-core";
 
 export { CustomerConfigError, customerConfigSchema, loadCustomerConfig, parseCustomerConfig } from "./config.js";
+export {
+  REAL_PDF_MAX_BYTES,
+  REAL_PDF_MAX_PAGES,
+  REAL_PDF_PAGE_CEILING,
+  REAL_PDF_REASONS,
+  pdfReadFailure,
+  realPdfLimits,
+  realPdfMessage,
+  refusalForRealPdf,
+  trailerEncrypts,
+} from "./real-pdf.js";
+export type { PdfRead, RealPdfLimits, RealPdfReason } from "./real-pdf.js";
 export type { ConfigProblem, CustomerConfig } from "./config.js";
 
 export { addDays, dayCount, isUnreadable, parseDate, unreadable } from "./normalize/dates.js";

@@ -16,10 +16,13 @@ import {
   reviewQueue,
   type DecisionCommand,
   type FinishedRun,
+  type ManualDocument,
   type QueueInvoice,
   type QueueSource,
   type StoredElement,
 } from "./review-view";
+
+export type { ManualDocument };
 
 export type ReviewSql = {
   query<T extends Record<string, unknown> = Record<string, unknown>>(
@@ -27,8 +30,6 @@ export type ReviewSql = {
     values?: readonly unknown[],
   ): Promise<{ rows: T[] }>;
 };
-
-export type ManualDocument = { id: string; customer: string; receivedAt: string };
 
 export type ChargeLineView = {
   id: string;

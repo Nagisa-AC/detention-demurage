@@ -73,6 +73,7 @@ describe("extract queue", () => {
     expect(await loadRunDocument(pool, runId)).toEqual({
       storageKey: `documents/${customerId}/${hash}.pdf`,
       sha256: hash,
+      customerId,
     });
     expect(await loadRunDocument(pool, "00000000-0000-4000-8000-000000000000")).toBeNull();
 

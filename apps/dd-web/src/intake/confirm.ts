@@ -1,5 +1,13 @@
+import {
+  pdfReadFailure,
+  realPdfLimits,
+  realPdfMessage,
+  refusalForRealPdf,
+  type PdfRead,
+  type RealPdfLimits,
+} from "dd-core";
 import { checksumBase64, documentKey, EXPIRES_MESSAGE, incomingKey } from "./limits";
-import type { IntakeDb, ObjectStore } from "./store";
+import type { IntakeDb, ObjectStore, RejectReason } from "./store";
 
 export type ConfirmResult =
   | { kind: "missing-customer" }
@@ -15,6 +23,8 @@ export async function confirmUpload(input: {
   allow: ReadonlySet<string>;
   objects: ObjectStore;
   db: IntakeDb;
+  limits?: RealPdfLimits;
+  inspect?: (bytes: Uint8Array) => Promise<PdfRead>;
 }): Promise<ConfirmResult> {
   const exists = await input.db.customerExists(input.customerId);
   if (!exists) return { kind: "missing-customer" };
@@ -31,8 +41,8 @@ export async function confirmUpload(input: {
     return { kind: "rejected", message: EXPIRES_MESSAGE };
   }
   if (!input.allow.has(input.sha256)) {
-    await input.db.reject({ customerId: input.customerId, actor: input.actor, reason: "not_synthetic" });
-    return { kind: "rejected", message: EXPIRES_MESSAGE };
+    const refused = await refuseReal(input);
+    if (refused !== null) return refused;
   }
 
   const existing = await input.db.findDocument(input.customerId, input.sha256);
@@ -53,6 +63,59 @@ export async function confirmUpload(input: {
     actor: input.actor,
   });
   return { kind: "stored", documentId: saved.id, duplicate: saved.duplicate };
+}
+
+async function refuseReal(input: {
+  customerId: string;
+  uploadId: string;
+  sha256: string;
+  byteSize: number;
+  actor: string;
+  objects: ObjectStore;
+  db: IntakeDb;
+  limits?: RealPdfLimits;
+  inspect?: (bytes: Uint8Array) => Promise<PdfRead>;
+}): Promise<ConfirmResult | null> {
+  const accepts = await input.db.acceptsRealDocuments(input.customerId);
+  if (!accepts) {
+    await input.db.reject({ customerId: input.customerId, actor: input.actor, reason: "not_synthetic" });
+    return { kind: "rejected", message: EXPIRES_MESSAGE };
+  }
+  const limits = input.limits ?? realPdfLimits();
+  if (input.byteSize > limits.maxBytes) {
+    return await rejectReal(input, "too_large", limits);
+  }
+  const bytes = await input.objects.get(incomingKey(input.customerId, input.uploadId));
+  if (bytes === null) {
+    await input.db.reject({ customerId: input.customerId, actor: input.actor, reason: "missing" });
+    return { kind: "rejected", message: EXPIRES_MESSAGE };
+  }
+  if (bytes.byteLength !== input.byteSize) {
+    await input.db.reject({ customerId: input.customerId, actor: input.actor, reason: "checksum" });
+    return { kind: "rejected", message: EXPIRES_MESSAGE };
+  }
+  let read: PdfRead;
+  try {
+    read = input.inspect === undefined ? { kind: "malformed" } : await input.inspect(bytes);
+  } catch (error) {
+    read = { kind: pdfReadFailure(error) };
+  }
+  const reason = refusalForRealPdf({ byteSize: input.byteSize, read, limits });
+  if (reason !== null) return await rejectReal(input, reason, limits);
+  return null;
+}
+
+async function rejectReal(
+  input: { customerId: string; actor: string; db: IntakeDb },
+  reason: RejectReason,
+  limits: RealPdfLimits,
+): Promise<ConfirmResult> {
+  await input.db.reject({ customerId: input.customerId, actor: input.actor, reason });
+  const message =
+    reason === "too_large" || reason === "too_many_pages" || reason === "encrypted" || reason === "malformed"
+      ? realPdfMessage(reason, limits)
+      : EXPIRES_MESSAGE;
+  return { kind: "rejected", message };
 }
 
 function sameChecksum(actual: string | null, expected: string): boolean {

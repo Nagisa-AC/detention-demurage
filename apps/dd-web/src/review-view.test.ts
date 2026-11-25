@@ -242,6 +242,25 @@ describe("review queue", () => {
     expect(manual).toEqual([
       { id: "doc-scan", customer: "Other Goods", receivedAt: "2026-11-03T00:00:00.000Z" },
     ]);
+
+    const refused = manualEntries([
+      {
+        documentId: "doc-real",
+        customer: "Harbor Home Goods",
+        receivedAt: "2026-11-04T00:00:00.000Z",
+        invoiceId: null,
+        finishedAt: "2026-11-04T01:00:00.000Z",
+        pageRecords: [{ page: 1, status: "failed", reason: "encrypted", ungrounded: [] }],
+      },
+    ]);
+    expect(refused).toEqual([
+      {
+        id: "doc-real",
+        customer: "Harbor Home Goods",
+        receivedAt: "2026-11-04T00:00:00.000Z",
+        label: "This PDF is encrypted or password-protected.",
+      },
+    ]);
   });
 });
 

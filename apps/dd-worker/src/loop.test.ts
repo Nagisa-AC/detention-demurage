@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { GroundingError, InferenceGeoError, ModelOutputError, NormalizeError, StitchFailure } from "./errors.js";
 import { runOnce } from "./loop.js";
 import type { ClaimedRun } from "./queue.js";
-import type { ProcessResult } from "./process.js";
+import { processDocument, sha256Hex, type ProcessResult } from "./process.js";
 
 function claimedRun(id: string, attempts: number): ClaimedRun {
   return {
@@ -192,5 +192,44 @@ describe("runOnce", () => {
       log: (line) => logs.push(line),
     });
     expect(logs).toEqual(["run run-9 document read", "run run-9 finished"]);
+  });
+
+  it("finishes a malformed real PDF and still claims the next run", async () => {
+    const pdf = new Uint8Array([1, 2, 3, 4]);
+    const hash = sha256Hex(pdf);
+    const bad = claimedRun("run-bad", 1);
+    const next = claimedRun("run-next", 1);
+    if (bad.kind !== "extract" || next.kind !== "extract") throw new Error("expected an extract run");
+    const claims: ClaimedRun[] = [
+      { ...bad, sha256: hash },
+      { ...next, sha256: hash },
+    ];
+    const finished: string[] = [];
+    const step = () =>
+      runOnce({
+        claim: async () => claims.shift() ?? null,
+        download: async () => pdf,
+        process: (bytes, declaredHash) =>
+          processDocument({
+            pdf: bytes,
+            declaredHash,
+            allow: new Set(),
+            acceptsReal: true,
+            inspect: async () => ({ kind: "malformed" }),
+            readPages: async () => {
+              throw new Error("should not read");
+            },
+            extract: () => Promise.reject(new Error("model called")),
+          }),
+        finish: async (claimed) => {
+          finished.push(claimed.id);
+        },
+        report: ignoreReport,
+        log: () => undefined,
+      });
+    expect(await step()).toBe("finished");
+    expect(await step()).toBe("finished");
+    expect(finished).toEqual(["run-bad", "run-next"]);
+    expect(claims).toEqual([]);
   });
 });

@@ -97,6 +97,7 @@ export const customerConfigSchema = z
     contract_terms: z.array(contractTermSchema).exactOptional(),
     lookback_from: isoDateSchema,
     retention_days_after_close: z.int("must be an integer").positive("must be a positive integer"),
+    accepts_real_documents: z.boolean().default(false),
   })
   .superRefine((config, ctx) => {
     const pursue = config.billing_parties.pursue;

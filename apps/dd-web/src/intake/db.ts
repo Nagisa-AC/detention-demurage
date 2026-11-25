@@ -9,6 +9,17 @@ export function pgIntake(client: QueryClient): IntakeDb {
       const result = await client.query(`SELECT 1 FROM "Customer" WHERE id = $1`, [customerId]);
       return (result.rowCount ?? 0) > 0;
     },
+    async acceptsRealDocuments(customerId) {
+      const result = await client.query<{ flag: string | null }>(
+        `SELECT config->>'accepts_real_documents' AS flag
+         FROM "CustomerConfigVersion"
+         WHERE customer_id = $1
+         ORDER BY version DESC
+         LIMIT 1`,
+        [customerId],
+      );
+      return result.rows[0]?.flag === "true";
+    },
     async findDocument(customerId, sha256) {
       const result = await client.query<{ id: string }>(
         `SELECT id FROM "Document" WHERE customer_id = $1 AND sha256 = $2`,
