@@ -23,7 +23,7 @@ export async function startEmailCode(email: string): Promise<{ session: string }
 }
 
 export async function submitEmailCode(email: string, session: string, code: string): Promise<CognitoTokens | null> {
-  if (!/^\d{6}$/.test(code)) return null;
+  if (!/^\d{8}$/.test(code)) return null;
   const step = await respond(email, session, "EMAIL_OTP", { EMAIL_OTP_CODE: code });
   if (step === null || step.kind !== "tokens") return null;
   return step.tokens;

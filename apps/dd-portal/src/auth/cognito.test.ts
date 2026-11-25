@@ -31,13 +31,28 @@ describe("portal cognito", () => {
     setAuthFetch(async () => new Response(JSON.stringify({
       AuthenticationResult: { IdToken: "id", AccessToken: "access", RefreshToken: "refresh", ExpiresIn: 3600 },
     }), { status: 200 }));
-    expect(await submitEmailCode("person@example.com", "session", "123456")).toEqual({
+    expect(await submitEmailCode("person@example.com", "session", "12345678")).toEqual({
       idToken: "id",
       accessToken: "access",
       refreshToken: "refresh",
       expiresIn: 3600,
     });
     setAuthFetch(async () => new Response("no", { status: 400 }));
-    expect(await submitEmailCode("person@example.com", "session", "000000")).toBeNull();
+    expect(await submitEmailCode("person@example.com", "session", "00000000")).toBeNull();
+  });
+
+  it("accepts an 8-digit email code and refuses a 6-digit one", async () => {
+    process.env.PORTAL_COGNITO_CLIENT_ID = "portal-client";
+    const sent: string[] = [];
+    setAuthFetch(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { ChallengeResponses?: { EMAIL_OTP_CODE?: string } };
+      sent.push(body.ChallengeResponses?.EMAIL_OTP_CODE ?? "");
+      return new Response(JSON.stringify({
+        AuthenticationResult: { IdToken: "id", AccessToken: "access", RefreshToken: "refresh", ExpiresIn: 3600 },
+      }), { status: 200 });
+    });
+    expect(await submitEmailCode("person@example.com", "session", "123456")).toBeNull();
+    expect(await submitEmailCode("person@example.com", "session", "87654321")).toMatchObject({ idToken: "id" });
+    expect(sent).toEqual(["87654321"]);
   });
 });
