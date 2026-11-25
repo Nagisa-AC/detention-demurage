@@ -1,11 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import type { CustomerConfig } from "dd-core";
 import type { SettingsCards } from "../../../settings-cards";
 import { RealDocumentsForm } from "./real-documents-form";
 import { SettingsForm } from "./settings-form";
 
-export function SettingsView({ cards }: { cards: SettingsCards }) {
+export function SettingsView({
+  cards,
+  configId,
+  config,
+  editable,
+}: {
+  cards: SettingsCards;
+  configId: string;
+  config: CustomerConfig | null;
+  editable: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState(false);
   return (
@@ -40,7 +51,7 @@ export function SettingsView({ cards }: { cards: SettingsCards }) {
           )}
         </div>
       ) : null}
-      <div className="grid2" style={{ paddingBottom: 40 }}>
+      <div className="grid2" style={{ paddingBottom: editing ? 24 : 40 }}>
         <div className="stack">
           <section className="panel">
             <div className="ph">
@@ -100,17 +111,26 @@ export function SettingsView({ cards }: { cards: SettingsCards }) {
               </div>
             ))}
           </section>
-          {editing ? (
-            <section className="panel">
-              <div className="ph">
-                <h2>Edit settings</h2>
-                <div className="side">Saving creates a new version. The current version is kept.</div>
-              </div>
-              <SettingsForm customerId={cards.customerId} />
-            </section>
-          ) : null}
         </div>
       </div>
+      {editing ? (
+        <section className="panel settings-editor">
+          <div className="ph">
+            <h2>Edit settings</h2>
+            <div className="side">Saving creates a new version. The current version is kept.</div>
+          </div>
+          {editable ? (
+            <SettingsForm
+              customerId={cards.customerId}
+              configId={configId}
+              displayName={cards.displayName}
+              config={config}
+            />
+          ) : (
+            <p className="empty">This version cannot be edited because it could not be read.</p>
+          )}
+        </section>
+      ) : null}
     </>
   );
 }

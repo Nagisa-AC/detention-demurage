@@ -20,7 +20,7 @@ export type SettingsCards = {
   history: string[];
 };
 
-/** Readable cards from the current settings version. The YAML editor stays separate. */
+/** Readable cards from the current settings version. The settings form stays separate. */
 export function settingsCards(customer: CustomerSettings): SettingsCards {
   const current = customer.versions[0];
   const history = customer.versions.map(

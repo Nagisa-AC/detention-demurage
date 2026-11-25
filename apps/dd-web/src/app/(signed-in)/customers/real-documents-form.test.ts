@@ -16,7 +16,9 @@ describe("real documents confirmation", () => {
     expect(on).toContain("Stop accepting real PDFs. New files that are not synthetic samples will be refused.");
     expect(on).toContain("Turn off real documents");
 
-    const page = renderToStaticMarkup(createElement(SettingsView, { cards: cards(false) }));
+    const page = renderToStaticMarkup(
+      createElement(SettingsView, { cards: cards(false), configId: "harbor_home", config: null, editable: true }),
+    );
     expect(page).toContain("Real documents");
     expect(page).toContain("Off");
     expect(page).toContain("Accept real customer PDFs. They will be stored and read.");

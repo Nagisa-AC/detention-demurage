@@ -16,9 +16,15 @@ export default async function CustomerSettingsPage({ params }: { params: Promise
   const settings = await readCustomerSettings();
   const customer = settings.find((item) => item.id === customerId);
   if (customer === undefined) notFound();
+  const current = customer.versions[0];
   return (
     <Shell session={session} active="customers" theme={frame.theme} waiting={frame.waiting}>
-      <SettingsView cards={settingsCards(customer)} />
+      <SettingsView
+        cards={settingsCards(customer)}
+        configId={customer.configId}
+        config={current?.config ?? null}
+        editable={current === undefined || current.config !== null}
+      />
     </Shell>
   );
 }
