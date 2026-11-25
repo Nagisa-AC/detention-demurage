@@ -9,8 +9,8 @@ infra/*.tfplan
 infra/plan.json
 infra/*.tfvars
 !infra/terraform.tfvars.example
-.env
-.env.*
+.vercel
+.env*
 !.env.example
 *.tsbuildinfo
 data/

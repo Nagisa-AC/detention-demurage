@@ -26,7 +26,8 @@ describe("dd-web boundary", () => {
         text.includes("packages/extract") ||
         text.includes("dangerouslySetInnerHTML") ||
         text.includes("@react-pdf/renderer") ||
-        text.includes("pdf-lib")
+        text.includes("pdf-lib") ||
+        (text.includes("pdfjs-dist") && !file.endsWith(`${path.sep}pdf-pane.tsx`) && !file.endsWith(`${path.sep}pdf-worker${path.sep}route.ts`))
       );
     });
     expect(banned).toEqual([]);

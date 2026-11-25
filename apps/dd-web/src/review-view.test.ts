@@ -261,6 +261,26 @@ describe("review queue", () => {
         label: "This PDF is encrypted or password-protected.",
       },
     ]);
+
+    const labels = [
+      ["too_large", "This PDF is over 25 MB."],
+      ["too_many_pages", "This PDF has more than 30 pages."],
+      ["encrypted", "This PDF is encrypted or password-protected."],
+      ["malformed", "This PDF could not be read."],
+    ] as const;
+    for (const [reason, label] of labels) {
+      const rows = manualEntries([
+        {
+          documentId: "doc-real",
+          customer: "Harbor Home Goods",
+          receivedAt: "2026-11-04T00:00:00.000Z",
+          invoiceId: null,
+          finishedAt: "2026-11-04T01:00:00.000Z",
+          pageRecords: [{ page: 1, status: "failed", reason, ungrounded: [] }],
+        },
+      ]);
+      expect(rows[0]?.label).toBe(label);
+    }
   });
 });
 

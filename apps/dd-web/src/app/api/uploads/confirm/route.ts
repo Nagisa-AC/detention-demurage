@@ -6,7 +6,6 @@ import { confirmUpload } from "../../../../intake/confirm";
 import { withIntake } from "../../../../intake/db";
 import { json, readBody } from "../../../../intake/http";
 import { MAX_PDF_BYTES } from "../../../../intake/limits";
-import { inspectPdf } from "../../../../intake/pdf-file";
 import { s3ObjectStore } from "../../../../intake/s3";
 import { isSessionRequired, requireSession } from "../../../../session";
 import { markConfirmRoute } from "./work";
@@ -49,7 +48,6 @@ export async function POST(request: Request): Promise<Response> {
       actor,
       allow: syntheticAllowlist(),
       limits,
-      inspect: inspectPdf,
       objects,
       db,
     });
