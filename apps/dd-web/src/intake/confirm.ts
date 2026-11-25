@@ -1,11 +1,4 @@
-import {
-  pdfReadFailure,
-  realPdfLimits,
-  realPdfMessage,
-  refusalForRealPdf,
-  type PdfRead,
-  type RealPdfLimits,
-} from "dd-core";
+import { realPdfLimits, realPdfMessage, trailerEncrypts, type RealPdfLimits } from "dd-core";
 import { checksumBase64, documentKey, EXPIRES_MESSAGE, incomingKey } from "./limits";
 import type { IntakeDb, ObjectStore, RejectReason } from "./store";
 
@@ -24,7 +17,6 @@ export async function confirmUpload(input: {
   objects: ObjectStore;
   db: IntakeDb;
   limits?: RealPdfLimits;
-  inspect?: (bytes: Uint8Array) => Promise<PdfRead>;
 }): Promise<ConfirmResult> {
   const exists = await input.db.customerExists(input.customerId);
   if (!exists) return { kind: "missing-customer" };
@@ -74,7 +66,6 @@ async function refuseReal(input: {
   objects: ObjectStore;
   db: IntakeDb;
   limits?: RealPdfLimits;
-  inspect?: (bytes: Uint8Array) => Promise<PdfRead>;
 }): Promise<ConfirmResult | null> {
   const accepts = await input.db.acceptsRealDocuments(input.customerId);
   if (!accepts) {
@@ -94,15 +85,15 @@ async function refuseReal(input: {
     await input.db.reject({ customerId: input.customerId, actor: input.actor, reason: "checksum" });
     return { kind: "rejected", message: EXPIRES_MESSAGE };
   }
-  let read: PdfRead;
-  try {
-    read = input.inspect === undefined ? { kind: "malformed" } : await input.inspect(bytes);
-  } catch (error) {
-    read = { kind: pdfReadFailure(error) };
-  }
-  const reason = refusalForRealPdf({ byteSize: input.byteSize, read, limits });
-  if (reason !== null) return await rejectReal(input, reason, limits);
+  if (!pdfHeader(bytes)) return await rejectReal(input, "malformed", limits);
+  if (trailerEncrypts(bytes)) return await rejectReal(input, "encrypted", limits);
   return null;
+}
+
+/** A PDF starts with this header. Page count and a full read happen in the worker. */
+function pdfHeader(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 5) return false;
+  return Buffer.from(bytes.subarray(0, 5)).toString("latin1") === "%PDF-";
 }
 
 async function rejectReal(

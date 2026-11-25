@@ -274,16 +274,16 @@ describe("confirm", () => {
 
   it("stores a real PDF when the customer accepts real documents", async () => {
     const db = memory({ acceptsReal: true });
-    const remote = fakeObjects({ contentLength: 64, checksumSha256Base64: checksumBase64(OTHER) });
+    const body = pdfBytes("%PDF-1.4\ntrailer<</Size 1>>\n%%EOF", 64);
+    const remote = fakeObjects({ contentLength: body.byteLength, checksumSha256Base64: checksumBase64(OTHER) }, body);
     const result = await confirmUpload({
       customerId: CUSTOMER,
       uploadId: UPLOAD,
       sha256: OTHER,
-      byteSize: 64,
+      byteSize: body.byteLength,
       actor: "Reviewer",
       allow,
       limits: { maxBytes: 100, maxPages: 2 },
-      inspect: async () => ({ kind: "ok", pages: 1 }),
       objects: remote.store,
       db,
     });
@@ -295,7 +295,6 @@ describe("confirm", () => {
   it("keeps accepting a synthetic PDF when real documents are on", async () => {
     const db = memory({ acceptsReal: true });
     const remote = fakeObjects({ contentLength: 128, checksumSha256Base64: checksumBase64(SYNTHETIC) });
-    let inspected = false;
     const result = await confirmUpload({
       customerId: CUSTOMER,
       uploadId: UPLOAD,
@@ -303,19 +302,14 @@ describe("confirm", () => {
       byteSize: 128,
       actor: "Reviewer",
       allow,
-      inspect: async () => {
-        inspected = true;
-        return { kind: "ok", pages: 1 };
-      },
       objects: remote.store,
       db,
     });
     expect(result.kind).toBe("stored");
-    expect(inspected).toBe(false);
     expect(remote.gets).toBe(0);
   });
 
-  it("refuses an oversized, long, encrypted, or unreadable real PDF", async () => {
+  it("refuses an oversized, headerless, or encrypted real PDF and leaves page count to the worker", async () => {
     const limits = { maxBytes: 100, maxPages: 2 };
     const tooLarge = await confirmUpload({
       customerId: CUSTOMER,
@@ -338,7 +332,6 @@ describe("confirm", () => {
       actor: "Reviewer",
       allow,
       limits,
-      inspect: async () => ({ kind: "ok", pages: 1 }),
       objects: largeRemote.store,
       db: largeDb,
     });
@@ -347,49 +340,55 @@ describe("confirm", () => {
     expect(largeRemote.gets).toBe(0);
     expect(tooLarge.kind).toBe("rejected");
 
+    const longBody = pdfBytes("%PDF-1.4\n", 40);
     const pagesDb = memory({ acceptsReal: true });
     const pages = await confirmUpload({
       customerId: CUSTOMER,
       uploadId: UPLOAD,
       sha256: OTHER,
-      byteSize: 40,
+      byteSize: longBody.byteLength,
       actor: "Reviewer",
       allow,
       limits,
-      inspect: async () => ({ kind: "ok", pages: 3 }),
-      objects: fakeObjects({ contentLength: 40, checksumSha256Base64: checksumBase64(OTHER) }).store,
+      objects: fakeObjects({ contentLength: longBody.byteLength, checksumSha256Base64: checksumBase64(OTHER) }, longBody).store,
       db: pagesDb,
     });
-    expect(pages).toEqual({ kind: "rejected", message: realPdfMessage("too_many_pages", limits) });
-    expect(pagesDb.audits[0]?.payload).toEqual({ reason: "too_many_pages" });
+    expect(pages).toEqual({ kind: "stored", documentId: "doc-1", duplicate: false });
+    expect(pagesDb.audits.some((audit) => audit.payload.reason === "too_many_pages")).toBe(false);
 
+    const lockedBody = new TextEncoder().encode("%PDF-1.4\ntrailer<</Encrypt 3 0 R>>\n%%EOF");
     const lockedDb = memory({ acceptsReal: true });
     const locked = await confirmUpload({
       customerId: CUSTOMER,
       uploadId: UPLOAD,
       sha256: OTHER,
-      byteSize: 40,
+      byteSize: lockedBody.byteLength,
       actor: "Reviewer",
       allow,
       limits,
-      inspect: async () => ({ kind: "encrypted" }),
-      objects: fakeObjects({ contentLength: 40, checksumSha256Base64: checksumBase64(OTHER) }).store,
+      objects: fakeObjects(
+        { contentLength: lockedBody.byteLength, checksumSha256Base64: checksumBase64(OTHER) },
+        lockedBody,
+      ).store,
       db: lockedDb,
     });
     expect(locked).toEqual({ kind: "rejected", message: "This PDF is encrypted or password-protected." });
     expect(lockedDb.audits[0]?.payload).toEqual({ reason: "encrypted" });
 
+    const brokenBody = new Uint8Array([1, 2, 3, 4]);
     const brokenDb = memory({ acceptsReal: true });
     const broken = await confirmUpload({
       customerId: CUSTOMER,
       uploadId: UPLOAD,
       sha256: OTHER,
-      byteSize: 40,
+      byteSize: brokenBody.byteLength,
       actor: "Reviewer",
       allow,
       limits,
-      inspect: async () => ({ kind: "malformed" }),
-      objects: fakeObjects({ contentLength: 40, checksumSha256Base64: checksumBase64(OTHER) }).store,
+      objects: fakeObjects(
+        { contentLength: brokenBody.byteLength, checksumSha256Base64: checksumBase64(OTHER) },
+        brokenBody,
+      ).store,
       db: brokenDb,
     });
     expect(broken).toEqual({ kind: "rejected", message: "This PDF could not be read." });
@@ -482,7 +481,16 @@ function memory(seed?: { documents?: { id: string; sha256: string }[]; acceptsRe
   };
 }
 
-function fakeObjects(head: { contentLength: number; checksumSha256Base64: string } | null): {
+function pdfBytes(header: string, length: number): Uint8Array {
+  const out = new Uint8Array(length);
+  out.set(new TextEncoder().encode(header).subarray(0, length));
+  return out;
+}
+
+function fakeObjects(
+  head: { contentLength: number; checksumSha256Base64: string } | null,
+  bytes?: Uint8Array,
+): {
   store: ObjectStore;
   copy: [string, string][];
   gets: number;
@@ -497,7 +505,8 @@ function fakeObjects(head: { contentLength: number; checksumSha256Base64: string
       },
       async get() {
         remote.gets += 1;
-        return head === null ? null : new Uint8Array(head.contentLength);
+        if (head === null) return null;
+        return bytes ?? new Uint8Array(head.contentLength);
       },
       async copy(sourceKey: string, destKey: string) {
         copy.push([sourceKey, destKey]);
