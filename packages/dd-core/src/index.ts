@@ -1,6 +1,7 @@
 export const packageId = "dd-core";
 
 export { CustomerConfigError, customerConfigSchema, loadCustomerConfig, parseCustomerConfig } from "./config.js";
+export { stringifyCustomerConfig } from "./config-write.js";
 export {
   REAL_PDF_MAX_BYTES,
   REAL_PDF_MAX_PAGES,
