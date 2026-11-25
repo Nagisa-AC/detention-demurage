@@ -1,5 +1,5 @@
 import type { CustomerConfig } from "dd-core";
-import { stringify } from "yaml";
+import { stringifyCustomerConfig } from "dd-core/config-write";
 
 export type CarrierStance = "pursue" | "skip" | "covered";
 
@@ -219,7 +219,7 @@ export function documentFromDraft(draft: SettingsDraft): Record<string, unknown>
 }
 
 export function settingsYaml(draft: SettingsDraft): string {
-  return stringify(documentFromDraft(draft), { schema: "core" });
+  return stringifyCustomerConfig(documentFromDraft(draft));
 }
 
 export function isSettingsDraft(value: unknown): value is SettingsDraft {

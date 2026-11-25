@@ -15,6 +15,7 @@ describe("dd-web boundary", () => {
     };
     expect(pkg.dependencies?.["dd-core"]).toBeDefined();
     expect(pkg.dependencies?.["dd-extract"]).toBeUndefined();
+    expect(pkg.dependencies?.yaml).toBeUndefined();
 
     const sources = walk(appSrc).filter((file) => !file.endsWith(".test.ts"));
     const banned = sources.filter((file) => {

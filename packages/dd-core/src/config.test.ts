@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stringify } from "yaml";
 import { describe, expect, it } from "vitest";
+import { stringifyCustomerConfig } from "./config-write.js";
 import {
   CustomerConfigError,
   loadCustomerConfig,
@@ -56,6 +57,7 @@ describe("loadCustomerConfig", () => {
     });
     expect(typeof config.fee_pct).toBe("string");
     expect(parseCustomerConfig(fs.readFileSync(harborPath, "utf8"), harborPath)).toEqual(config);
+    expect(parseCustomerConfig(stringifyCustomerConfig(config), "round trip")).toEqual(config);
   });
 
   it("records why the contract window is February 2026", () => {
