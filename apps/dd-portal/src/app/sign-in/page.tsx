@@ -1,7 +1,4 @@
-import { requestCode } from "./actions";
-import { PasskeyButton } from "./passkey-button";
-
-const CONTACT = "mailto:disputes@tidemark.example";
+import { SignInForm } from "./form";
 
 export default async function SignInPage({
   searchParams,
@@ -18,22 +15,12 @@ export default async function SignInPage({
         </div>
         <h2>Sign in</h2>
         <p>Customer portal. Accounts are created by invitation.</p>
-        {notice === "email" ? <p className="notice">Enter your work email.</p> : null}
         {notice === "refused" ? <p className="notice">We couldn&apos;t sign you in. Contact us.</p> : null}
-        {notice === "passkey" ? <p className="notice">That passkey didn&apos;t work.</p> : null}
-        <PasskeyButton />
-        <div className="or">or</div>
-        <form action={requestCode}>
-          <div className="lbl">Work email</div>
-          <input className="field" id="email" name="email" type="email" autoComplete="username" placeholder="you@company.com" required />
-          <button className="btn full" type="submit">
-            Email me a sign-in code
-          </button>
-        </form>
+        <SignInForm emailNotice={notice === "email"} passkeyNotice={notice === "passkey"} />
         <div className="small">
           No account? Accounts come with a Tidemark engagement.
           <br />
-          <a href={CONTACT}>Contact us</a>
+          <a href="mailto:disputes@tidemark.example">Contact us</a>
         </div>
       </div>
     </main>

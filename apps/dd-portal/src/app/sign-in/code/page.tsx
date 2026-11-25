@@ -19,7 +19,7 @@ export default async function CodePage({
         </div>
         <h2>Check your email</h2>
         <p>
-          If <b style={{ color: "var(--ink)" }}>{who}</b> has a Tidemark account, we&apos;ve sent an 8-digit code. It expires in 10
+          If <b style={{ color: "var(--ink)" }}>{who}</b> has a Tidemark account, we&apos;ve sent an 8-digit code. It expires in 3
           minutes.
         </p>
         {notice === "code" ? <p className="notice">That code didn&apos;t work.</p> : null}
