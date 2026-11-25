@@ -21,8 +21,10 @@ resource "aws_cognito_user_pool" "portal" {
     source_arn            = local.portal_ses_identity_arn
   }
 
+  # Cognito requires PASSWORD in this list. The portal never offers password sign-in.
+  # Every user gets a random password nobody knows.
   sign_in_policy {
-    allowed_first_auth_factors = ["WEB_AUTHN", "EMAIL_OTP"]
+    allowed_first_auth_factors = ["PASSWORD", "EMAIL_OTP", "WEB_AUTHN"]
   }
 
   web_authn_configuration {

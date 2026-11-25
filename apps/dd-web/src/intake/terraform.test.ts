@@ -207,7 +207,7 @@ describe("terraform plan", () => {
     expect(block(pool, "admin_create_user_config").allow_admin_create_user_only).toBe(true);
     expect(pool.username_attributes).toEqual(["email"]);
     const factors = block(pool, "sign_in_policy").allowed_first_auth_factors;
-    expect(Array.isArray(factors) ? [...factors].map(String).sort() : []).toEqual(["EMAIL_OTP", "WEB_AUTHN"]);
+    expect(Array.isArray(factors) ? [...factors].map(String).sort() : []).toEqual(["EMAIL_OTP", "PASSWORD", "WEB_AUTHN"]);
     const passkey = block(pool, "web_authn_configuration");
     expect(passkey.relying_party_id).toBe("portal.example.com");
     expect(passkey.user_verification).toBe("required");

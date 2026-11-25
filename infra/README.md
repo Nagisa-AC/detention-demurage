@@ -56,7 +56,7 @@ If an older `terraform.tfvars` still has `aws_account_id`, `vercel_team_slug`, `
 
 ## Customer portal
 
-The customer pool is `dd-portal` in us-east-2, separate from the staff pool. Only an admin can create users. Sign-in is a passkey, with an email one-time code as the other first factor. The AWS provider expresses both, so there is no console step for them. The app client has no secret. Set `portal_host` in `terraform.tfvars` to the portal hostname before you plan. Passkeys are bound to that host.
+The customer pool is `dd-portal` in us-east-2, separate from the staff pool. Only an admin can create users. Sign-in is a passkey, with an email one-time code as the other first factor. The AWS provider expresses both, so there is no console step for them. Cognito also requires `PASSWORD` in the factor list. A user can't sign in with a password unless one is set through forgot-password, which needs access to their email, the same bar as the email code. The app client has no secret. Set `portal_host` in `terraform.tfvars` to the portal hostname before you plan. Passkeys are bound to that host.
 
 Email codes use Amazon SES. `portal_email_from` is the sender address, and the pool's email configuration is `DEVELOPER` with that identity. Cognito is allowed `ses:SendEmail` and `ses:SendRawEmail` on that identity only, and only when the source is this user pool.
 
