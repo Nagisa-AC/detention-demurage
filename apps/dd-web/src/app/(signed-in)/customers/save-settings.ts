@@ -2,17 +2,27 @@
 
 import { revalidatePath } from "next/cache";
 import { saveCustomerSettings, type SettingsProblem } from "../../../settings";
+import { isSettingsDraft, settingsYaml } from "../../../settings-draft";
 import { requireSession } from "../../../session";
 
 export type SettingsFormState = { message: string; problems: SettingsProblem[] };
 
 export async function saveSettings(_previous: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
   const session = await requireSession({ path: "/customers" });
+  const customerId = field(formData, "customerId");
+  let draft: unknown;
   try {
-    const customerId = field(formData, "customerId");
+    draft = JSON.parse(field(formData, "draft"));
+  } catch {
+    return { message: "", problems: [{ path: "document", message: "is not a valid form" }] };
+  }
+  if (!isSettingsDraft(draft)) {
+    return { message: "", problems: [{ path: "document", message: "is not a valid form" }] };
+  }
+  try {
     const result = await saveCustomerSettings({
       customerId,
-      yaml: field(formData, "yaml"),
+      yaml: settingsYaml(draft),
       actor: session.name,
     });
     if (result.ok) {
