@@ -1,3 +1,4 @@
+import { realPdfMessage } from "dd-core";
 import { isSha256, isUuid, MAX_PDF_BYTES, PDF_CONTENT_TYPE } from "./limits";
 
 export type UploadFields = {
@@ -14,7 +15,10 @@ export type ConfirmFields = {
   byteSize: number;
 };
 
-export function readUploadFields(body: unknown): { ok: true; value: UploadFields } | { ok: false; error: string } {
+export function readUploadFields(
+  body: unknown,
+  maxBytes = MAX_PDF_BYTES,
+): { ok: true; value: UploadFields } | { ok: false; error: string } {
   const record = recordOf(body);
   if (record === null) return { ok: false, error: "The request is not valid." };
   const customerId = stringField(record, "customerId");
@@ -25,12 +29,19 @@ export function readUploadFields(body: unknown): { ok: true; value: UploadFields
   if (sha256 === null || !isSha256(sha256)) return { ok: false, error: "The hash is not valid." };
   if (byteSize === null) return { ok: false, error: "The request is not valid." };
   if (contentType !== PDF_CONTENT_TYPE) return { ok: false, error: "Only a PDF can be uploaded." };
-  if (byteSize > MAX_PDF_BYTES) return { ok: false, error: "This PDF is over 20 MiB." };
+  if (byteSize > maxBytes) {
+    const error =
+      maxBytes === MAX_PDF_BYTES ? "This PDF is over 20 MiB." : realPdfMessage("too_large", { maxBytes, maxPages: 1 });
+    return { ok: false, error };
+  }
   if (byteSize < 1) return { ok: false, error: "The request is not valid." };
   return { ok: true, value: { customerId, sha256, byteSize, contentType } };
 }
 
-export function readConfirmFields(body: unknown): { ok: true; value: ConfirmFields } | { ok: false; error: string } {
+export function readConfirmFields(
+  body: unknown,
+  maxBytes = MAX_PDF_BYTES,
+): { ok: true; value: ConfirmFields } | { ok: false; error: string } {
   const record = recordOf(body);
   if (record === null) return { ok: false, error: "The request is not valid." };
   const customerId = stringField(record, "customerId");
@@ -41,8 +52,13 @@ export function readConfirmFields(body: unknown): { ok: true; value: ConfirmFiel
     return { ok: false, error: "The request is not valid." };
   }
   if (sha256 === null || !isSha256(sha256)) return { ok: false, error: "The hash is not valid." };
-  if (byteSize === null || byteSize < 1 || byteSize > MAX_PDF_BYTES) {
-    return { ok: false, error: "The request is not valid." };
+  if (byteSize === null || byteSize < 1) return { ok: false, error: "The request is not valid." };
+  if (byteSize > maxBytes) {
+    const error =
+      maxBytes === MAX_PDF_BYTES
+        ? "The request is not valid."
+        : realPdfMessage("too_large", { maxBytes, maxPages: 1 });
+    return { ok: false, error };
   }
   return { ok: true, value: { customerId, uploadId, sha256, byteSize } };
 }

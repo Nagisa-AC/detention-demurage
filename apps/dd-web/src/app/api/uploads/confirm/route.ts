@@ -1,9 +1,12 @@
+import { realPdfLimits } from "dd-core";
 import { uploadConfig, webS3 } from "../../../../intake/aws";
 import { syntheticAllowlist } from "../../../../intake/allow";
 import { readConfirmFields } from "../../../../intake/body";
 import { confirmUpload } from "../../../../intake/confirm";
 import { withIntake } from "../../../../intake/db";
 import { json, readBody } from "../../../../intake/http";
+import { MAX_PDF_BYTES } from "../../../../intake/limits";
+import { inspectPdf } from "../../../../intake/pdf-file";
 import { s3ObjectStore } from "../../../../intake/s3";
 import { isSessionRequired, requireSession } from "../../../../session";
 import { markConfirmRoute } from "./work";
@@ -25,7 +28,8 @@ export async function POST(request: Request): Promise<Response> {
   markConfirmRoute();
   const body = await readBody(request);
   if (!body.ok) return json(400, { error: "The request is not valid." });
-  const fields = readConfirmFields(body.value);
+  const limits = realPdfLimits();
+  const fields = readConfirmFields(body.value, limits.maxBytes);
   if (!fields.ok) return json(400, { error: fields.error });
   const config = uploadConfig();
   if (config === null) return json(503, { error: "Upload is not configured." });
@@ -33,6 +37,10 @@ export async function POST(request: Request): Promise<Response> {
   const client = webS3();
   const objects = s3ObjectStore(client, config.bucket);
   return withIntake(config.databaseUrl, async (db) => {
+    if (fields.value.byteSize > MAX_PDF_BYTES) {
+      const accepts = await db.acceptsRealDocuments(fields.value.customerId);
+      if (!accepts) return json(400, { error: "The request is not valid." });
+    }
     const result = await confirmUpload({
       customerId: fields.value.customerId,
       uploadId: fields.value.uploadId,
@@ -40,6 +48,8 @@ export async function POST(request: Request): Promise<Response> {
       byteSize: fields.value.byteSize,
       actor,
       allow: syntheticAllowlist(),
+      limits,
+      inspect: inspectPdf,
       objects,
       db,
     });

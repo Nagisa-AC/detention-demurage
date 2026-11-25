@@ -27,6 +27,27 @@ describe("diagnoseRun", () => {
     expect(lines.join("\n")).not.toContain("cust");
   });
 
+  it("downloads a real PDF when the customer accepts real documents", async () => {
+    const pdf = new Uint8Array([1, 2, 3]);
+    const lines: string[] = [];
+    let downloaded = false;
+    const code = await diagnoseRun({
+      runId,
+      allow: new Set(),
+      acceptsReal: async () => true,
+      load: async () => ({ storageKey: "documents/cust/file.pdf", sha256: sha256Hex(pdf), customerId: "cust" }),
+      download: async () => {
+        downloaded = true;
+        return pdf;
+      },
+      process: async () => okResult(),
+      write: (line) => lines.push(line),
+    });
+    expect(code).toBe(0);
+    expect(downloaded).toBe(true);
+    expect(lines).toEqual(["diagnose ok"]);
+  });
+
   it("refuses bytes that do not match the declared synthetic hash", async () => {
     const pdf = new Uint8Array([1, 2, 3]);
     const lines: string[] = [];

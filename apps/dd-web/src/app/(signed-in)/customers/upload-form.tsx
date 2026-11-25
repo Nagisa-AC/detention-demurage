@@ -8,7 +8,7 @@ const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const EXPIRES = "This upload was not accepted. The incoming object expires within a day.";
 const BROWSER_SEND = "The browser could not send the file.";
 
-export function UploadForm({ customers }: { customers: Customer[] }) {
+export function UploadForm({ customers, maxBytes = MAX_PDF_BYTES }: { customers: Customer[]; maxBytes?: number }) {
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,8 +32,10 @@ export function UploadForm({ customers }: { customers: Customer[] }) {
       setMessage("Choose a PDF.");
       return;
     }
-    if (file.size > MAX_PDF_BYTES) {
-      setMessage("This PDF is over 20 MiB. No upload was started.");
+    if (file.size > maxBytes) {
+      const size =
+        maxBytes === MAX_PDF_BYTES ? "This PDF is over 20 MiB." : `This PDF is over ${Math.round(maxBytes / (1024 * 1024))} MB.`;
+      setMessage(`${size} No upload was started.`);
       return;
     }
     setBusy(true);
@@ -130,7 +132,10 @@ export function UploadForm({ customers }: { customers: Customer[] }) {
         <strong>{fileName === "" ? "Drop a PDF here" : fileName}</strong>
         <span className="help">{fileName === "" ? "or choose a file" : "Ready to upload"}</span>
       </label>
-      <p className="help">PDF only, up to 20 MiB.{customers.length === 1 && customers[0] !== undefined ? ` For ${customers[0].displayName}.` : ""}</p>
+      <p className="help">
+        {maxBytes === MAX_PDF_BYTES ? "PDF only, up to 20 MiB." : `PDF only, up to ${Math.round(maxBytes / (1024 * 1024))} MB.`}
+        {customers.length === 1 && customers[0] !== undefined ? ` For ${customers[0].displayName}.` : ""}
+      </p>
       <button type="submit" className="btn primary" disabled={busy}>
         {busy ? "Uploading…" : "Upload"}
       </button>

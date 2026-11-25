@@ -1,8 +1,10 @@
+import { realPdfLimits } from "dd-core";
 import { uploadConfig, webS3 } from "../../../intake/aws";
 import { readUploadFields } from "../../../intake/body";
 import { withIntake } from "../../../intake/db";
 import { json, readBody } from "../../../intake/http";
 import { issueUpload } from "../../../intake/issue";
+import { MAX_PDF_BYTES } from "../../../intake/limits";
 import { presignPdfPut } from "../../../intake/presign";
 import { isSessionRequired, requireSession } from "../../../session";
 import { markUploadRoute } from "./work";
@@ -22,7 +24,8 @@ export async function POST(request: Request): Promise<Response> {
   markUploadRoute();
   const body = await readBody(request);
   if (!body.ok) return json(400, { error: "The request is not valid." });
-  const fields = readUploadFields(body.value);
+  const limits = realPdfLimits();
+  const fields = readUploadFields(body.value, limits.maxBytes);
   if (!fields.ok) return json(400, { error: fields.error });
   const config = uploadConfig();
   if (config === null) return json(503, { error: "Upload is not configured." });
@@ -30,6 +33,10 @@ export async function POST(request: Request): Promise<Response> {
   const client = webS3();
   const bucket = config.bucket;
   return withIntake(config.databaseUrl, async (db) => {
+    if (fields.value.byteSize > MAX_PDF_BYTES) {
+      const accepts = await db.acceptsRealDocuments(fields.value.customerId);
+      if (!accepts) return json(400, { error: "This PDF is over 20 MiB." });
+    }
     const result = await issueUpload({
       customerId: fields.value.customerId,
       sha256: fields.value.sha256,

@@ -13,6 +13,8 @@ export type SettingsCards = {
   headline: string;
   engagement: Fact[] | null;
   unreadable: string | null;
+  acceptsReal: boolean;
+  canToggleReal: boolean;
   carriers: CarrierCard[];
   terms: TermCard[];
   history: string[];
@@ -31,6 +33,8 @@ export function settingsCards(customer: CustomerSettings): SettingsCards {
       headline: "No settings yet",
       engagement: null,
       unreadable: null,
+      acceptsReal: false,
+      canToggleReal: false,
       carriers: [],
       terms: [],
       history,
@@ -43,6 +47,8 @@ export function settingsCards(customer: CustomerSettings): SettingsCards {
       headline: `Version ${current.version}`,
       engagement: null,
       unreadable: `Version ${current.version} cannot be shown.`,
+      acceptsReal: false,
+      canToggleReal: false,
       carriers: [],
       terms: [],
       history,
@@ -54,6 +60,8 @@ export function settingsCards(customer: CustomerSettings): SettingsCards {
     headline: `Version ${current.version} · saved by ${current.createdBy}, ${formatSavedAt(current.createdAt)}`,
     engagement: engagementOf(current.config),
     unreadable: null,
+    acceptsReal: current.config.accepts_real_documents,
+    canToggleReal: true,
     carriers: [
       ...current.config.billing_parties.pursue.map((id) => ({ id, pursue: true })),
       ...current.config.billing_parties.do_not_pursue.map((id) => ({ id, pursue: false })),
@@ -74,6 +82,7 @@ function engagementOf(config: CustomerConfig): Fact[] {
     },
     { label: "Lookback from", value: config.lookback_from },
     { label: "Retention", value: `Documents kept ${config.retention_days_after_close} days after the case closes` },
+    { label: "Real documents", value: config.accepts_real_documents ? "On" : "Off" },
   ];
 }
 

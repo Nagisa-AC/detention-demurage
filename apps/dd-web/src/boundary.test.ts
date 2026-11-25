@@ -74,6 +74,7 @@ describe("dd-web boundary", () => {
       "(signed-in)/customers/export-report.ts",
       "(signed-in)/customers/publish-results.ts",
       "(signed-in)/customers/rerun-checks.ts",
+      "(signed-in)/customers/save-real-documents.ts",
       "(signed-in)/customers/save-settings.ts",
       "(signed-in)/firm/save-firm.ts",
       "(signed-in)/review/actions.ts",

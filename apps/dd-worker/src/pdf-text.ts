@@ -1,12 +1,37 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { pdfReadFailure, trailerEncrypts, type PdfRead } from "dd-core";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+
+/** Page count for a real PDF, or why the bytes cannot be read. */
+export async function inspectPdf(pdf: Uint8Array): Promise<PdfRead> {
+  if (trailerEncrypts(pdf)) return { kind: "encrypted" };
+  pointWorker();
+  const task = getDocument({ data: pdf.slice(), verbosity: 0 });
+  let doc: Awaited<typeof task.promise> | undefined;
+  try {
+    doc = await task.promise;
+    return doc.numPages > 0 ? { kind: "ok", pages: doc.numPages } : { kind: "malformed" };
+  } catch (error) {
+    return { kind: pdfReadFailure(error) };
+  } finally {
+    try {
+      await doc?.cleanup();
+    } finally {
+      await task.destroy();
+    }
+  }
+}
+
+function pointWorker(): void {
+  const beside = new URL("./pdf.worker.mjs", import.meta.url);
+  if (existsSync(fileURLToPath(beside))) GlobalWorkerOptions.workerSrc = beside.href;
+}
 
 /** One string per page, items joined with no extra spaces, matching the fixture text layer. */
 export async function readPdfPages(pdf: Uint8Array): Promise<string[]> {
   // The bundle ships pdf.worker.mjs beside main.mjs. Source tests keep pdfjs's own worker.
-  const beside = new URL("./pdf.worker.mjs", import.meta.url);
-  if (existsSync(fileURLToPath(beside))) GlobalWorkerOptions.workerSrc = beside.href;
+  pointWorker();
   // pdfjs detaches the ArrayBuffer it is given. A copy leaves the caller's bytes for pdf-lib.
   const task = getDocument({ data: pdf.slice(), verbosity: 0 });
   let doc: Awaited<typeof task.promise> | undefined;

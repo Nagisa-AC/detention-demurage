@@ -33,6 +33,7 @@ export default async function ReviewPage() {
     id: document.id,
     customer: document.customer,
     received: formatSavedAt(document.receivedAt),
+    ...(document.label === undefined ? {} : { label: document.label }),
   }));
   const approved: ApprovedRow[] = invoices
     .filter((invoice) => invoice.approved && invoice.approvedAt !== null && isSameEtDay(invoice.approvedAt))

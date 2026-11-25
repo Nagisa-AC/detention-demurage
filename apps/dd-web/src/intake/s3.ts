@@ -1,4 +1,4 @@
-import { CopyObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CopyObjectCommand, GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { ObjectHead, ObjectStore } from "./store";
 
 export function s3ObjectStore(client: S3Client, bucket: string): ObjectStore {
@@ -11,6 +11,16 @@ export function s3ObjectStore(client: S3Client, bucket: string): ObjectStore {
           checksumSha256Base64: out.ChecksumSHA256 ?? null,
         };
         return head;
+      } catch (error) {
+        if (isMissing(error)) return null;
+        throw error;
+      }
+    },
+    async get(key) {
+      try {
+        const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        const bytes = await out.Body?.transformToByteArray();
+        return bytes === undefined ? null : bytes;
       } catch (error) {
         if (isMissing(error)) return null;
         throw error;

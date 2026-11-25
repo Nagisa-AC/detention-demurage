@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SettingsCards } from "../../../settings-cards";
+import { RealDocumentsForm } from "./real-documents-form";
 import { SettingsForm } from "./settings-form";
 
 export function SettingsView({ cards }: { cards: SettingsCards }) {
@@ -72,6 +73,17 @@ export function SettingsView({ cards }: { cards: SettingsCards }) {
           </section>
         </div>
         <div className="stack">
+          <section className="panel">
+            <div className="ph">
+              <h2>Real documents</h2>
+              <div className="side">{cards.acceptsReal ? "On" : "Off"}</div>
+            </div>
+            {cards.canToggleReal ? (
+              <RealDocumentsForm customerId={cards.customerId} accepts={cards.acceptsReal} />
+            ) : (
+              <p className="empty">Save settings before accepting real documents.</p>
+            )}
+          </section>
           <section className="panel">
             <div className="ph">
               <h2>Contract terms</h2>

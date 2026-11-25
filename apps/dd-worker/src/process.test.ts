@@ -42,6 +42,118 @@ describe("processDocument", () => {
     expect(mismatch.pages[0]?.reason).toBe("checksum");
   });
 
+  it("accepts a real PDF and refuses size, pages, encryption, and a file it cannot read", async () => {
+    const pdf = new Uint8Array([1, 2, 3, 4]);
+    const hash = sha256Hex(pdf);
+    const limits = { maxBytes: 3, maxPages: 2 };
+    let extracted = false;
+    const accepted = await processDocument({
+      pdf,
+      declaredHash: hash,
+      allow: new Set(),
+      acceptsReal: true,
+      limits: { maxBytes: 10, maxPages: 2 },
+      inspect: async () => ({ kind: "ok", pages: 1 }),
+      readPages: async () => ["Invoice text"],
+      extract: async () => {
+        extracted = true;
+        return [page(1)];
+      },
+    });
+    expect(accepted.modelCalled).toBe(true);
+    expect(extracted).toBe(true);
+
+    const tooLarge = await processDocument({
+      pdf,
+      declaredHash: hash,
+      allow: new Set(),
+      acceptsReal: true,
+      limits,
+      inspect: async () => ({ kind: "ok", pages: 1 }),
+      readPages: async () => ["text"],
+      extract: () => Promise.reject(new Error("model called")),
+    });
+    expect(tooLarge.pages[0]?.reason).toBe("too_large");
+    expect(tooLarge.modelCalled).toBe(false);
+
+    const long = await processDocument({
+      pdf,
+      declaredHash: hash,
+      allow: new Set(),
+      acceptsReal: true,
+      limits: { maxBytes: 10, maxPages: 1 },
+      inspect: async () => ({ kind: "ok", pages: 2 }),
+      readPages: async () => ["one", "two"],
+      extract: () => Promise.reject(new Error("model called")),
+    });
+    expect(long.pages[0]?.reason).toBe("too_many_pages");
+
+    const locked = await processDocument({
+      pdf,
+      declaredHash: hash,
+      allow: new Set(),
+      acceptsReal: true,
+      inspect: async () => ({ kind: "encrypted" }),
+      readPages: async () => ["text"],
+      extract: () => Promise.reject(new Error("model called")),
+    });
+    expect(locked.pages[0]?.reason).toBe("encrypted");
+
+    let read = false;
+    const broken = await processDocument({
+      pdf,
+      declaredHash: hash,
+      allow: new Set(),
+      acceptsReal: true,
+      inspect: async () => ({ kind: "malformed" }),
+      readPages: async () => {
+        read = true;
+        return ["text"];
+      },
+      extract: () => Promise.reject(new Error("model called")),
+    });
+    expect(broken.finish).toBe("failed");
+    expect(broken.modelCalled).toBe(false);
+    expect(broken.pages[0]?.reason).toBe("malformed");
+    expect(read).toBe(false);
+
+    const thrown = await processDocument({
+      pdf,
+      declaredHash: hash,
+      allow: new Set(),
+      acceptsReal: true,
+      inspect: async () => ({ kind: "ok", pages: 1 }),
+      readPages: async () => {
+        const error = new Error("bad");
+        error.name = "InvalidPDFException";
+        throw error;
+      },
+      extract: () => Promise.reject(new Error("model called")),
+    });
+    expect(thrown.pages[0]?.reason).toBe("malformed");
+    expect(thrown.modelCalled).toBe(false);
+  });
+
+  it("still accepts a synthetic PDF when real documents are on", async () => {
+    const pdf = new Uint8Array([8]);
+    const hash = sha256Hex(pdf);
+    let inspected = false;
+    const result = await processDocument({
+      pdf,
+      declaredHash: hash,
+      allow: new Set([hash]),
+      acceptsReal: false,
+      inspect: async () => {
+        inspected = true;
+        return { kind: "malformed" };
+      },
+      readPages: async () => ["Invoice text"],
+      extract: async () => [page(1)],
+    });
+    expect(inspected).toBe(false);
+    expect(result.modelCalled).toBe(true);
+  });
+
   it("skips the model when the text layer is empty and does not call those elements ungrounded", async () => {
     const pdf = new Uint8Array([9]);
     const hash = sha256Hex(pdf);

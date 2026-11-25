@@ -12,6 +12,7 @@ import { uploadConfig } from "./aws";
 import { readUploadFields } from "./body";
 import { confirmUpload } from "./confirm";
 import { issueUpload } from "./issue";
+import { realPdfMessage } from "dd-core";
 import { checksumBase64, documentKey, EXPIRES_MESSAGE, incomingKey, MAX_PDF_BYTES } from "./limits";
 import type { IntakeDb, ObjectStore, RejectReason } from "./store";
 
@@ -268,6 +269,132 @@ describe("confirm", () => {
     expect(remote.copy).toEqual([]);
     expect(db.documents).toEqual([]);
     expect(db.audits[0]?.payload).toEqual({ reason: "not_synthetic" });
+    expect(remote.gets).toBe(0);
+  });
+
+  it("stores a real PDF when the customer accepts real documents", async () => {
+    const db = memory({ acceptsReal: true });
+    const remote = fakeObjects({ contentLength: 64, checksumSha256Base64: checksumBase64(OTHER) });
+    const result = await confirmUpload({
+      customerId: CUSTOMER,
+      uploadId: UPLOAD,
+      sha256: OTHER,
+      byteSize: 64,
+      actor: "Reviewer",
+      allow,
+      limits: { maxBytes: 100, maxPages: 2 },
+      inspect: async () => ({ kind: "ok", pages: 1 }),
+      objects: remote.store,
+      db,
+    });
+    expect(result).toEqual({ kind: "stored", documentId: "doc-1", duplicate: false });
+    expect(remote.gets).toBe(1);
+    expect(remote.copy).toHaveLength(1);
+  });
+
+  it("keeps accepting a synthetic PDF when real documents are on", async () => {
+    const db = memory({ acceptsReal: true });
+    const remote = fakeObjects({ contentLength: 128, checksumSha256Base64: checksumBase64(SYNTHETIC) });
+    let inspected = false;
+    const result = await confirmUpload({
+      customerId: CUSTOMER,
+      uploadId: UPLOAD,
+      sha256: SYNTHETIC,
+      byteSize: 128,
+      actor: "Reviewer",
+      allow,
+      inspect: async () => {
+        inspected = true;
+        return { kind: "ok", pages: 1 };
+      },
+      objects: remote.store,
+      db,
+    });
+    expect(result.kind).toBe("stored");
+    expect(inspected).toBe(false);
+    expect(remote.gets).toBe(0);
+  });
+
+  it("refuses an oversized, long, encrypted, or unreadable real PDF", async () => {
+    const limits = { maxBytes: 100, maxPages: 2 };
+    const tooLarge = await confirmUpload({
+      customerId: CUSTOMER,
+      uploadId: UPLOAD,
+      sha256: OTHER,
+      byteSize: 101,
+      actor: "Reviewer",
+      allow,
+      limits,
+      objects: fakeObjects({ contentLength: 101, checksumSha256Base64: checksumBase64(OTHER) }).store,
+      db: memory({ acceptsReal: true }),
+    });
+    const largeDb = memory({ acceptsReal: true });
+    const largeRemote = fakeObjects({ contentLength: 101, checksumSha256Base64: checksumBase64(OTHER) });
+    const large = await confirmUpload({
+      customerId: CUSTOMER,
+      uploadId: UPLOAD,
+      sha256: OTHER,
+      byteSize: 101,
+      actor: "Reviewer",
+      allow,
+      limits,
+      inspect: async () => ({ kind: "ok", pages: 1 }),
+      objects: largeRemote.store,
+      db: largeDb,
+    });
+    expect(large).toEqual({ kind: "rejected", message: realPdfMessage("too_large", limits) });
+    expect(largeDb.audits[0]?.payload).toEqual({ reason: "too_large" });
+    expect(largeRemote.gets).toBe(0);
+    expect(tooLarge.kind).toBe("rejected");
+
+    const pagesDb = memory({ acceptsReal: true });
+    const pages = await confirmUpload({
+      customerId: CUSTOMER,
+      uploadId: UPLOAD,
+      sha256: OTHER,
+      byteSize: 40,
+      actor: "Reviewer",
+      allow,
+      limits,
+      inspect: async () => ({ kind: "ok", pages: 3 }),
+      objects: fakeObjects({ contentLength: 40, checksumSha256Base64: checksumBase64(OTHER) }).store,
+      db: pagesDb,
+    });
+    expect(pages).toEqual({ kind: "rejected", message: realPdfMessage("too_many_pages", limits) });
+    expect(pagesDb.audits[0]?.payload).toEqual({ reason: "too_many_pages" });
+
+    const lockedDb = memory({ acceptsReal: true });
+    const locked = await confirmUpload({
+      customerId: CUSTOMER,
+      uploadId: UPLOAD,
+      sha256: OTHER,
+      byteSize: 40,
+      actor: "Reviewer",
+      allow,
+      limits,
+      inspect: async () => ({ kind: "encrypted" }),
+      objects: fakeObjects({ contentLength: 40, checksumSha256Base64: checksumBase64(OTHER) }).store,
+      db: lockedDb,
+    });
+    expect(locked).toEqual({ kind: "rejected", message: "This PDF is encrypted or password-protected." });
+    expect(lockedDb.audits[0]?.payload).toEqual({ reason: "encrypted" });
+
+    const brokenDb = memory({ acceptsReal: true });
+    const broken = await confirmUpload({
+      customerId: CUSTOMER,
+      uploadId: UPLOAD,
+      sha256: OTHER,
+      byteSize: 40,
+      actor: "Reviewer",
+      allow,
+      limits,
+      inspect: async () => ({ kind: "malformed" }),
+      objects: fakeObjects({ contentLength: 40, checksumSha256Base64: checksumBase64(OTHER) }).store,
+      db: brokenDb,
+    });
+    expect(broken).toEqual({ kind: "rejected", message: "This PDF could not be read." });
+    expect(brokenDb.audits[0]?.payload).toEqual({ reason: "malformed" });
+    expect(brokenDb.documents).toEqual([]);
   });
 
   it("does not remove an object that is already gone", async () => {
@@ -319,7 +446,7 @@ function fields(overrides: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-function memory(seed?: { documents?: { id: string; sha256: string }[] }): IntakeDb & {
+function memory(seed?: { documents?: { id: string; sha256: string }[]; acceptsReal?: boolean }): IntakeDb & {
   documents: { id: string; sha256: string }[];
   runs: { documentId: string }[];
   audits: { action: string; payload: Record<string, unknown> }[];
@@ -333,6 +460,9 @@ function memory(seed?: { documents?: { id: string; sha256: string }[] }): Intake
     audits,
     async customerExists() {
       return true;
+    },
+    async acceptsRealDocuments() {
+      return seed?.acceptsReal === true;
     },
     async findDocument(_customerId, sha256) {
       return documents.find((document) => document.sha256 === sha256) ?? null;
@@ -355,17 +485,24 @@ function memory(seed?: { documents?: { id: string; sha256: string }[] }): Intake
 function fakeObjects(head: { contentLength: number; checksumSha256Base64: string } | null): {
   store: ObjectStore;
   copy: [string, string][];
+  gets: number;
 } {
   const copy: [string, string][] = [];
-  return {
+  const remote = {
     copy,
+    gets: 0,
     store: {
       async head() {
         return head;
       },
-      async copy(sourceKey, destKey) {
+      async get() {
+        remote.gets += 1;
+        return head === null ? null : new Uint8Array(head.contentLength);
+      },
+      async copy(sourceKey: string, destKey: string) {
         copy.push([sourceKey, destKey]);
       },
     },
   };
+  return remote;
 }

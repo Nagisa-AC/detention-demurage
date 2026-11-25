@@ -1,4 +1,7 @@
+import { realPdfLimits } from "dd-core";
 import { notFound } from "next/navigation";
+import { MAX_PDF_BYTES } from "../../../../intake/limits";
+import { readUploadRefusals } from "../../../../intake/refusals";
 import { readLatestChecks } from "../../../../rules-run";
 import { readFindingsBoard } from "../../../../findings-data";
 import { requireSession } from "../../../../session";
@@ -29,9 +32,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
   const publication = await readPublishState(customer.id);
   const current = customer.versions[0];
   const config = current?.config ?? null;
+  const acceptsReal = config?.accepts_real_documents === true;
+  const refusals = await readUploadRefusals(customer.id);
   const meta = [
     config === null ? null : `Fee ${feePercent(config.fee_pct)}`,
     config === null ? null : `authorization valid to ${config.authorization.valid_until}`,
+    acceptsReal ? "Real documents on" : "Real documents off",
     current === undefined ? null : `settings v${current.version}`,
     checks?.status === "ok" ? `checks ran ${formatSavedAt(checks.ranAt)}` : null,
   ].filter((part): part is string => part !== null);
@@ -64,7 +70,26 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
           <div className="ph">
             <h2>Upload invoices</h2>
           </div>
-          <UploadForm customers={[{ id: customer.id, displayName: customer.displayName }]} />
+          <UploadForm
+            customers={[{ id: customer.id, displayName: customer.displayName }]}
+            maxBytes={acceptsReal ? realPdfLimits().maxBytes : MAX_PDF_BYTES}
+          />
+        </section>
+        <section className="panel" aria-label="Refused uploads">
+          <div className="ph">
+            <h2>Refused uploads</h2>
+          </div>
+          {refusals.length === 0 ? (
+            <p className="empty">No refused uploads.</p>
+          ) : (
+            <ul className="history">
+              {refusals.map((refusal) => (
+                <li key={refusal.id}>
+                  {formatSavedAt(refusal.at)} — {refusal.label}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </Shell>

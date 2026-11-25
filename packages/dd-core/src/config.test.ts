@@ -52,6 +52,7 @@ describe("loadCustomerConfig", () => {
       ],
       lookback_from: "2022-06-16",
       retention_days_after_close: 730,
+      accepts_real_documents: false,
     });
     expect(typeof config.fee_pct).toBe("string");
     expect(parseCustomerConfig(fs.readFileSync(harborPath, "utf8"), harborPath)).toEqual(config);
