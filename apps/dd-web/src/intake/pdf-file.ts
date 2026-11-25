@@ -1,12 +1,8 @@
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { pdfReadFailure, trailerEncrypts, type PdfRead } from "dd-core";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
-/** Page count, or why the bytes are not a PDF this app can read. */
+/** Page count, or why the bytes are not a PDF this app can read. Node uses pdfjs's own worker. */
 export async function inspectPdf(bytes: Uint8Array): Promise<PdfRead> {
-  const beside = new URL("./pdf.worker.mjs", import.meta.url);
-  if (existsSync(fileURLToPath(beside))) GlobalWorkerOptions.workerSrc = beside.href;
   if (trailerEncrypts(bytes)) return { kind: "encrypted" };
   const task = getDocument({ data: bytes.slice(), verbosity: 0 });
   let doc: Awaited<typeof task.promise> | undefined;
